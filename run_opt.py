@@ -455,6 +455,7 @@ def _run_ase_optimizer(
     d3_params = optimizer_config.get("d3_params") or optimizer_config.get("dftd3_params")
     prefer_d3_backend = optimizer_config.get("d3_backend") or optimizer_config.get("dftd3_backend")
     d3_command = optimizer_config.get("d3_command") or optimizer_config.get("dftd3_command")
+    d3_command_validate = optimizer_config.get("d3_command_validate", True)
     if not prefer_d3_backend and d3_command:
         prefer_d3_backend = "ase"
     ks_type = select_ks_type(
@@ -546,7 +547,7 @@ def _run_ase_optimizer(
                 )
             if d3_backend == "ase" and d3_command:
                 d3_command_path = shutil.which(d3_command)
-                if d3_command_path is None:
+                if d3_command_validate and d3_command_path is None:
                     raise ValueError(
                         "DFTD3 command '{command}' was not found on PATH. "
                         "Install the DFTD3 binary and set optimizer.ase.d3_command "

@@ -194,11 +194,17 @@ def validate_run_config(config):
             ase_config = config["optimizer"]["ase"]
             d3_backend = ase_config.get("d3_backend") or ase_config.get("dftd3_backend")
             d3_command = ase_config.get("d3_command") or ase_config.get("dftd3_command")
+            d3_command_validate = ase_config.get("d3_command_validate", True)
+            if "d3_command_validate" in ase_config and not isinstance(
+                d3_command_validate, bool
+            ):
+                raise ValueError("Config 'optimizer.ase.d3_command_validate' must be a boolean.")
             if d3_command == "/path/to/dftd3":
                 raise ValueError(
                     "Config 'optimizer.ase.d3_command' uses the placeholder '/path/to/dftd3'. "
-                    "Replace it with null and set \"d3_backend\": \"dftd3\", or provide a "
-                    "real executable path such as \"/usr/local/bin/dftd3\"."
+                    "Replace it with null and set \"d3_backend\": \"dftd3\" (recommended), or "
+                    "provide a real executable path such as \"/usr/local/bin/dftd3\". "
+                    "Recommended: \"d3_backend\": \"dftd3\", \"d3_command\": null."
                 )
             normalized_backend = None
             if d3_backend is not None:
@@ -214,21 +220,26 @@ def validate_run_config(config):
                 if d3_command not in (None, ""):
                     raise ValueError(
                         "Config 'optimizer.ase.d3_command' must be null or unset when "
-                        "'optimizer.ase.d3_backend' is 'dftd3'. Example: \"d3_command\": null."
+                        "'optimizer.ase.d3_backend' is 'dftd3'. Recommended: "
+                        "\"d3_backend\": \"dftd3\", \"d3_command\": null."
                     )
             if normalized_backend == "ase":
                 if not d3_command:
                     raise ValueError(
                         "Config 'optimizer.ase.d3_command' is required when "
                         "'optimizer.ase.d3_backend' is 'ase'. Example: \"d3_command\": "
-                        "\"/usr/local/bin/dftd3\"."
+                        "\"/usr/local/bin/dftd3\". Recommended: \"d3_backend\": \"dftd3\", "
+                        "\"d3_command\": null."
                     )
                 if not isinstance(d3_command, str):
                     raise ValueError("Config 'optimizer.ase.d3_command' must be a string path.")
-                if not (os.path.isfile(d3_command) and os.access(d3_command, os.X_OK)):
+                if d3_command_validate and not (
+                    os.path.isfile(d3_command) and os.access(d3_command, os.X_OK)
+                ):
                     raise ValueError(
                         "Config 'optimizer.ase.d3_command' must point to an executable file. "
-                        "Example: \"d3_command\": \"/usr/local/bin/dftd3\"."
+                        "Example: \"d3_command\": \"/usr/local/bin/dftd3\". Recommended: "
+                        "\"d3_backend\": \"dftd3\", \"d3_command\": null."
                     )
             d3_params = ase_config.get("d3_params")
             dftd3_params = ase_config.get("dftd3_params")
