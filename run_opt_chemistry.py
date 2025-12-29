@@ -61,13 +61,24 @@ def parse_xyz_metadata(xyz_lines):
     spin = DEFAULT_SPIN
     multiplicity = DEFAULT_MULTIPLICITY
 
-    for token in comment.replace(",", " ").split():
-        if token.startswith("charge="):
-            charge = int(token.split("=", 1)[1])
-        elif token.startswith("spin="):
-            spin = int(token.split("=", 1)[1])
-        elif token.startswith("multiplicity="):
-            multiplicity = int(token.split("=", 1)[1])
+    metadata_pattern = re.compile(
+        r"(charge|spin|multiplicity)\s*[:=]\s*([^\s,;]+)", re.I
+    )
+    for match in metadata_pattern.finditer(comment):
+        key = match.group(1).lower()
+        raw_value = match.group(2)
+        if not re.fullmatch(r"[+-]?\d+", raw_value):
+            raise ValueError(
+                f"Invalid {key} value in XYZ comment: {raw_value!r}. "
+                "Expected an integer (e.g., charge=0)."
+            )
+        value = int(raw_value)
+        if key == "charge":
+            charge = value
+        elif key == "spin":
+            spin = value
+        elif key == "multiplicity":
+            multiplicity = value
 
     return charge, spin, multiplicity
 
