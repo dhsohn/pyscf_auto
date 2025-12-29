@@ -2697,4 +2697,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as error:
+        message = str(error)
+        if message:
+            print(message, file=sys.stderr)
+        sys.exit(1)
