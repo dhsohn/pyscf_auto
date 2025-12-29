@@ -35,6 +35,12 @@ PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **�
   - 예: `charge=0 multiplicity=1`
 - 지정하지 않으면 전자수 parity로 spin을 자동 추정하며, 라디칼/TS/금속/diradical에서는 오상태 위험이 있어 경고가 출력됩니다.
 
+### 5) 백그라운드 큐 & 상태/진단 유틸리티
+- `--background`로 큐에 넣어 **백그라운드 실행** 가능 (우선순위/타임아웃 지원)
+- `--queue-status`, `--queue-cancel`, `--queue-retry` 등으로 **큐 상태 관리**
+- `--status`, `--status-recent`로 **실행 결과 요약 출력**
+- `--doctor`, `--validate-only`로 **환경 진단/설정 검증**
+
 ---
 
 ## 디렉토리 구조(요약)
@@ -144,6 +150,48 @@ python run_opt.py input_ts.xyz --config run_config_ts.json --non-interactive
 - `--run-dir <dir>`: 출력 폴더를 직접 지정
 - `--run-id <uuid>`: run id를 고정
 - `--solvent-map <json>`: solvent dielectric map 경로 지정
+- `--validate-only`: config 검증만 수행하고 종료
+- `--status <run_dir|metadata.json>`: 특정 실행의 상태 요약 출력
+- `--status-recent <N>`: 최근 N개 실행 요약 출력
+- `--doctor`: 환경 진단(의존성/solvent map 등) 후 종료
+
+---
+
+## 백그라운드 큐 실행/관리
+
+### 1) 큐에 실행 등록
+```bash
+python run_opt.py input.xyz --config run_config_ase.json --non-interactive --background
+```
+
+옵션:
+- `--queue-priority <int>`: 우선순위(높을수록 먼저 실행)
+- `--queue-max-runtime <sec>`: 최대 실행 시간(초)
+
+### 2) 큐 상태 확인/관리
+```bash
+python run_opt.py --queue-status
+python run_opt.py --queue-cancel <RUN_ID>
+python run_opt.py --queue-retry <RUN_ID>
+python run_opt.py --queue-requeue-failed
+```
+
+큐 파일은 `runs/queue.json`에 저장되며, 큐 러너 로그는 `log/queue_runner.log`에 기록됩니다.
+
+---
+
+## 유틸리티 명령
+
+### 환경 진단
+```bash
+python run_opt.py --doctor
+```
+
+### 설정 검증(단축 명령 지원)
+```bash
+python run_opt.py --validate-only --config run_config_ase.json
+python run_opt.py validate-config run_config_ase.json
+```
 
 ---
 
@@ -157,7 +205,7 @@ python run_opt.py input_ts.xyz --config run_config_ts.json --non-interactive
 - `config_used.json` 또는 `config_used.json`에 준하는 설정 스냅샷
 - `optimized.xyz` / `<output_xyz>`: 최적화 결과 구조
 - `ase_opt.traj` 또는 `ts_opt.traj`: ASE trajectory (옵티마이저 설정에 따라)
-- `frequency.json`: 프리퀀시 결과(실행한 경우)
+- `frequency_result.json`: 프리퀀시 결과(실행한 경우)
 
 ---
 
