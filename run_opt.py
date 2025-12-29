@@ -1423,17 +1423,26 @@ def _normalize_cli_args(argv):
 
 
 def _run_doctor():
-    print("pDFT doctor report")
-    print("-" * 60)
+    def format_doctor_result(label, status, remedy=None):
+        status_label = "OK" if status else "FAIL"
+        separator = "  " if status_label == "OK" else " "
+        if status:
+            return f"{status_label}{separator}{label}"
+        if remedy:
+            return f"{status_label}{separator}{label} ({remedy})"
+        return f"{status_label}{separator}{label}"
 
-    def _print_check(label, ok, hint):
-        status = "OK" if ok else "FAIL"
-        print(f"{label:<30} {status} - {hint}")
+    failures = []
+
+    def _record_check(label, ok, remedy=None):
+        if not ok:
+            failures.append(label)
+        print(format_doctor_result(label, ok, remedy))
 
     def _check_import(module_name, hint):
         spec = importlib.util.find_spec(module_name)
         ok = spec is not None
-        _print_check(module_name, ok, "available" if ok else hint)
+        _record_check(module_name, ok, hint if not ok else None)
         return ok
 
     def _solvent_map_hint(error):
@@ -1448,10 +1457,9 @@ def _run_doctor():
 
     try:
         load_solvent_map(DEFAULT_SOLVENT_MAP_PATH)
+        _record_check("solvent_map", True)
     except Exception as exc:
-        _print_check("solvent_map", False, _solvent_map_hint(exc))
-        print(f"  Error: {exc}")
-        sys.exit(1)
+        _record_check("solvent_map", False, _solvent_map_hint(exc))
 
     checks = [
         ("pyscf", "Install with: pip install pyscf"),
@@ -1461,32 +1469,13 @@ def _run_doctor():
         ("dftd3", "Install with: pip install dftd3"),
         ("dftd4", "Install with: pip install dftd4"),
     ]
-    print("Diagnostics:")
     for module_name, hint in checks:
         _check_import(module_name, hint)
 
-    environment = collect_environment_snapshot(DEFAULT_THREAD_COUNT)
-    print("\nEnvironment:")
-    print(f"Python       : {environment.get('python_version')}")
-    print(f"Platform     : {environment.get('platform')}")
-    print(f"CPU count    : {environment.get('cpu_count')}")
-    print(f"Thread count : {environment.get('thread_count')}")
-    git_metadata = collect_git_metadata(os.getcwd())
-    if git_metadata:
-        print(
-            "Git          : {branch} @ {commit} (dirty={is_dirty})".format(
-                branch=git_metadata.get("branch") or "unknown",
-                commit=git_metadata.get("commit") or "unknown",
-                is_dirty=git_metadata.get("is_dirty"),
-            )
-        )
-    else:
-        print("Git          : not a git repository")
-    print("\nPackage versions:")
-    for package in ("ase", "pyscf", "dftd3", "dftd4"):
-        version = get_package_version(package)
-        status = version if version is not None else "not installed"
-        print(f"  {package}: {status}")
+    if failures:
+        print(f"FAIL {len(failures)} checks failed: {', '.join(failures)}")
+        sys.exit(1)
+    print("OK  all checks passed")
 
 
 def main():
