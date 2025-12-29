@@ -1401,6 +1401,23 @@ def _print_recent_statuses(count, base_dir="runs"):
         print(f"        metadata={item['path']}")
 
 
+def _normalize_cli_args(argv):
+    if not argv:
+        return argv
+    if argv[0] != "validate-config":
+        return argv
+    remaining = argv[1:]
+    config_path = None
+    if remaining and not remaining[0].startswith("-"):
+        config_path = remaining[0]
+        remaining = remaining[1:]
+    normalized = ["--validate-only"]
+    if config_path:
+        normalized.extend(["--config", config_path])
+    normalized.extend(remaining)
+    return normalized
+
+
 def main():
     """
     Main function to run the geometry optimization.
@@ -1503,13 +1520,18 @@ def main():
     )
     parser.add_argument("--no-background", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--queue-runner", action="store_true", help=argparse.SUPPRESS)
-    args = parser.parse_args()
+    args = parser.parse_args(_normalize_cli_args(sys.argv[1:]))
 
     run_in_background = bool(args.background and not args.no_background)
     if args.interactive and args.non_interactive:
         raise ValueError("--interactive and --non-interactive cannot be used together.")
+    if args.validate_only and args.interactive:
+        raise ValueError("--validate-only cannot be used with --interactive.")
     if args.interactive is None:
         args.interactive = not args.non_interactive
+    if args.validate_only:
+        args.interactive = False
+        args.non_interactive = True
     if args.queue_status:
         _ensure_queue_file(DEFAULT_QUEUE_PATH)
         with _queue_lock(DEFAULT_QUEUE_LOCK_PATH):
