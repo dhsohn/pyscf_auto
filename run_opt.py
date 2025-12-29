@@ -1404,7 +1404,10 @@ def _print_recent_statuses(count, base_dir="runs"):
 def _normalize_cli_args(argv):
     if not argv:
         return argv
-    if argv[0] != "validate-config":
+    command = argv[0]
+    if command == "doctor":
+        return ["--doctor", *argv[1:]]
+    if command != "validate-config":
         return argv
     remaining = argv[1:]
     config_path = None
@@ -1416,6 +1419,32 @@ def _normalize_cli_args(argv):
         normalized.extend(["--config", config_path])
     normalized.extend(remaining)
     return normalized
+
+
+def _run_doctor():
+    print("pDFT doctor report")
+    print("-" * 60)
+    environment = collect_environment_snapshot(DEFAULT_THREAD_COUNT)
+    print(f"Python       : {environment.get('python_version')}")
+    print(f"Platform     : {environment.get('platform')}")
+    print(f"CPU count    : {environment.get('cpu_count')}")
+    print(f"Thread count : {environment.get('thread_count')}")
+    git_metadata = collect_git_metadata(os.getcwd())
+    if git_metadata:
+        print(
+            "Git          : {branch} @ {commit} (dirty={is_dirty})".format(
+                branch=git_metadata.get("branch") or "unknown",
+                commit=git_metadata.get("commit") or "unknown",
+                is_dirty=git_metadata.get("is_dirty"),
+            )
+        )
+    else:
+        print("Git          : not a git repository")
+    print("Packages:")
+    for package in ("pyscf", "ase", "dftd3", "dftd4", "sella"):
+        version = get_package_version(package)
+        status = version if version is not None else "not installed"
+        print(f"  {package}: {status}")
 
 
 def main():
@@ -1475,6 +1504,11 @@ def main():
         help="Validate the JSON config file and exit without running a calculation.",
     )
     parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Run environment diagnostics and exit (e.g., python run_opt.py --doctor).",
+    )
+    parser.add_argument(
         "--status",
         help=(
             "Show a summary for a run directory or metadata JSON file "
@@ -1521,6 +1555,10 @@ def main():
     parser.add_argument("--no-background", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--queue-runner", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(_normalize_cli_args(sys.argv[1:]))
+
+    if args.doctor:
+        _run_doctor()
+        return
 
     run_in_background = bool(args.background and not args.no_background)
     if args.interactive and args.non_interactive:
