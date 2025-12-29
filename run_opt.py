@@ -319,10 +319,21 @@ def _prompt_interactive_config(args):
     if not isinstance(config, dict):
         raise ValueError(f"Failed to load base config from {base_config_path}.")
 
-    xyz_file = args.xyz_file or input("인풋 파일을 적으시오 (.xyz): ").strip()
-    if not xyz_file:
-        raise ValueError("xyz 파일 경로를 입력해야 합니다.")
-    args.xyz_file = xyz_file
+    if not args.xyz_file:
+        input_dir = os.path.join(os.path.dirname(__file__), "input")
+        input_xyz_files = sorted(
+            filename
+            for filename in os.listdir(input_dir)
+            if filename.lower().endswith(".xyz")
+            and os.path.isfile(os.path.join(input_dir, filename))
+        )
+        if not input_xyz_files:
+            raise ValueError("input 디렉토리에 .xyz 파일이 없습니다.")
+        selected_xyz = _prompt_choice(
+            "인풋 파일을 선택하세요 (.xyz):",
+            input_xyz_files,
+        )
+        args.xyz_file = os.path.join(input_dir, selected_xyz)
 
     basis = _prompt_choice(
         "basis set을 선택하세요:",
