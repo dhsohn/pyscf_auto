@@ -59,10 +59,7 @@ def load_run_config(config_path):
         try:
             config = json.loads(raw_config)
         except json.JSONDecodeError as error:
-            location = f"line {error.lineno} column {error.colno}"
-            raise ValueError(
-                f"Failed to parse JSON config '{config_path}' ({location}): {error.msg}"
-            ) from error
+            raise ValueError(_format_json_decode_error(config_path, error)) from error
     return config, raw_config
 
 
@@ -70,7 +67,18 @@ def load_solvent_map(map_path):
     if not map_path:
         return {}
     with open(map_path, "r", encoding="utf-8") as map_file:
-        return json.load(map_file)
+        try:
+            return json.load(map_file)
+        except json.JSONDecodeError as error:
+            raise ValueError(_format_json_decode_error(map_path, error)) from error
+
+
+def _format_json_decode_error(path, error):
+    location = f"line {error.lineno} column {error.colno}"
+    message = error.msg
+    if message == "Extra data":
+        message = "파일에 JSON 객체가 두 개 이상 있음"
+    return f"Failed to parse JSON file '{path}' ({location}): {message}"
 
 
 def _validate_fields(config, rules, prefix=""):
