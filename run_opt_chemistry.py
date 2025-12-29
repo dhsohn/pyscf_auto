@@ -390,6 +390,7 @@ def compute_frequencies(
     from ase import units
     from ase import Atoms
     from pyscf import dft, hessian as pyscf_hessian
+    from pyscf.hessian import thermo as pyscf_thermo
 
     xc = normalize_xc_functional(xc)
     mol_freq = mol.copy()
@@ -441,7 +442,7 @@ def compute_frequencies(
         hess = mf_freq.Hessian().kernel()
     else:
         hess = pyscf_hessian.Hessian(mf_freq).kernel()
-    harmonic = pyscf_hessian.harmonic_analysis(mol_freq, hess)
+    harmonic = pyscf_thermo.harmonic_analysis(mol_freq, hess, imaginary_freq=False)
     freq_wavenumber = None
     freq_au = None
     if harmonic:

@@ -10,15 +10,14 @@
     "mode": "transition_state",
     "output_xyz": "ts_optimized.xyz",
     "ase": {
-      "d3_command": "/path/to/dftd3",
+      "d3_backend": "dftd3",
+      "d3_command": null,
       "d3_params": {
         "damping": {
-          "method": "d3bj",
-          "parameters": {
-            "s8": 1.9889,
-            "a1": 0.3981,
-            "a2": 4.4211
-          }
+          "s6": 1.0,
+          "s8": 1.9889,
+          "a1": 0.3981,
+          "a2": 4.4211
         }
       },
       "optimizer": "sella",
@@ -26,9 +25,7 @@
       "steps": 200,
       "trajectory": "ts_opt.traj",
       "logfile": "ts_opt.log",
-      "sella": {
-        "order": 1
-      }
+      "sella": { "order": 1 }
     }
   },
   "solvent": "vacuum",
