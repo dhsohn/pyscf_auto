@@ -1,4 +1,5 @@
 import json
+import os
 
 DEFAULT_CHARGE = 0
 DEFAULT_SPIN = None
@@ -55,9 +56,11 @@ def validate_run_config(config):
     is_bool = lambda value: isinstance(value, bool)
     is_str = lambda value: isinstance(value, str)
     is_diis = lambda value: isinstance(value, (bool, int))
+    is_positive_int = lambda value: is_int(value) and value > 0
+    is_positive_number = lambda value: is_number(value) and value > 0
     validation_rules = {
-        "threads": (is_int, "Config '{name}' must be an integer."),
-        "memory_gb": (is_number, "Config '{name}' must be a number (int or float)."),
+        "threads": (is_positive_int, "Config '{name}' must be a positive integer."),
+        "memory_gb": (is_positive_number, "Config '{name}' must be a positive number (int or float)."),
         "enforce_os_memory_limit": (is_bool, "Config '{name}' must be a boolean."),
         "verbose": (is_bool, "Config '{name}' must be a boolean."),
         "single_point_enabled": (is_bool, "Config '{name}' must be a boolean."),
@@ -75,6 +78,31 @@ def validate_run_config(config):
         "dispersion": (is_str, "Config '{name}' must be a string."),
     }
     _validate_fields(config, validation_rules)
+    for required_key, example_value in (
+        ("basis", '"def2-svp"'),
+        ("xc", '"b3lyp"'),
+    ):
+        if config.get(required_key) in (None, ""):
+            raise ValueError(
+                "Config '{name}' is required. Example: {example}.".format(
+                    name=required_key,
+                    example=f"\"{required_key}\": {example_value}",
+                )
+            )
+    solvent_model = config.get("solvent_model")
+    if solvent_model:
+        if not isinstance(solvent_model, str):
+            raise ValueError("Config 'solvent_model' must be a string.")
+        if solvent_model.lower() not in ("pcm", "smd"):
+            raise ValueError(
+                "Config 'solvent_model' must be one of: pcm, smd. "
+                "Example: \"solvent_model\": \"pcm\"."
+            )
+        if not config.get("solvent"):
+            raise ValueError(
+                "Config 'solvent' is required when 'solvent_model' is set. "
+                "Example: \"solvent\": \"water\"."
+            )
     if "optimizer" in config and config["optimizer"] is not None:
         if not isinstance(config["optimizer"], dict):
             raise ValueError("Config 'optimizer' must be an object.")
@@ -87,6 +115,44 @@ def validate_run_config(config):
             if not isinstance(config["optimizer"]["ase"], dict):
                 raise ValueError("Config 'optimizer.ase' must be an object.")
             ase_config = config["optimizer"]["ase"]
+            d3_backend = ase_config.get("d3_backend") or ase_config.get("dftd3_backend")
+            d3_command = ase_config.get("d3_command") or ase_config.get("dftd3_command")
+            if d3_command == "/path/to/dftd3":
+                raise ValueError(
+                    "Config 'optimizer.ase.d3_command' uses the placeholder '/path/to/dftd3'. "
+                    "Replace it with null and set \"d3_backend\": \"dftd3\", or provide a "
+                    "real executable path such as \"/usr/local/bin/dftd3\"."
+                )
+            normalized_backend = None
+            if d3_backend is not None:
+                if not isinstance(d3_backend, str):
+                    raise ValueError("Config 'optimizer.ase.d3_backend' must be a string.")
+                normalized_backend = d3_backend.strip().lower()
+                if normalized_backend not in ("dftd3", "ase"):
+                    raise ValueError(
+                        "Config 'optimizer.ase.d3_backend' must be one of: dftd3, ase. "
+                        "Example: \"d3_backend\": \"dftd3\"."
+                    )
+            if normalized_backend == "dftd3":
+                if d3_command not in (None, ""):
+                    raise ValueError(
+                        "Config 'optimizer.ase.d3_command' must be null or unset when "
+                        "'optimizer.ase.d3_backend' is 'dftd3'. Example: \"d3_command\": null."
+                    )
+            if normalized_backend == "ase":
+                if not d3_command:
+                    raise ValueError(
+                        "Config 'optimizer.ase.d3_command' is required when "
+                        "'optimizer.ase.d3_backend' is 'ase'. Example: \"d3_command\": "
+                        "\"/usr/local/bin/dftd3\"."
+                    )
+                if not isinstance(d3_command, str):
+                    raise ValueError("Config 'optimizer.ase.d3_command' must be a string path.")
+                if not (os.path.isfile(d3_command) and os.access(d3_command, os.X_OK)):
+                    raise ValueError(
+                        "Config 'optimizer.ase.d3_command' must point to an executable file. "
+                        "Example: \"d3_command\": \"/usr/local/bin/dftd3\"."
+                    )
             d3_params = ase_config.get("d3_params")
             dftd3_params = ase_config.get("dftd3_params")
             if d3_params is not None and dftd3_params is not None:

@@ -1442,6 +1442,11 @@ def main():
         help="Optional run ID to use (useful for background launches).",
     )
     parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate the JSON config file and exit without running a calculation.",
+    )
+    parser.add_argument(
         "--status",
         help=(
             "Show a summary for a run directory or metadata JSON file "
@@ -1551,11 +1556,16 @@ def main():
         if args.interactive:
             config, config_raw = _prompt_interactive_config(args)
         else:
-            if not args.xyz_file:
-                raise ValueError("xyz_file is required unless --status is used.")
+            if not args.xyz_file and not args.validate_only:
+                raise ValueError(
+                    "xyz_file is required unless --status or --validate-only is used."
+                )
             config, config_raw = load_run_config(args.config)
 
         validate_run_config(config)
+        if args.validate_only:
+            print(f"Config validation passed: {args.config}")
+            return
         calculation_mode = _normalize_calculation_mode(config.get("calculation_mode"))
         basis = config.get("basis")
         xc = normalize_xc_functional(config.get("xc"))
