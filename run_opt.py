@@ -23,6 +23,7 @@ from run_opt_chemistry import (
     load_xyz,
     normalize_xc_functional,
     run_capability_check,
+    select_ks_type,
     total_electron_count,
 )
 from run_opt_config import (
@@ -420,6 +421,7 @@ def _run_ase_optimizer(
     run_dir,
     charge,
     spin,
+    multiplicity,
     basis,
     xc,
     scf_config,
@@ -455,6 +457,12 @@ def _run_ase_optimizer(
     d3_command = optimizer_config.get("d3_command") or optimizer_config.get("dftd3_command")
     if not prefer_d3_backend and d3_command:
         prefer_d3_backend = "ase"
+    ks_type = select_ks_type(
+        spin=spin,
+        scf_config=scf_config,
+        optimizer_mode=optimization_mode,
+        multiplicity=multiplicity,
+    )
     dispersion_settings = (
         parse_dispersion_settings(
             dispersion_model,
@@ -486,7 +494,7 @@ def _run_ase_optimizer(
             )
             if memory_mb:
                 mol.max_memory = memory_mb
-            if mol.spin == 0:
+            if ks_type == "RKS":
                 mf = dft.RKS(mol)
             else:
                 mf = dft.UKS(mol)
@@ -1796,11 +1804,19 @@ def main():
                     f"Total electrons: {total_electrons}, spin: {spin}. "
                     "Spin must satisfy (Nalpha - Nbeta) with Nalpha+Nbeta=total electrons."
                 )
+            if multiplicity is None:
+                multiplicity = spin + 1
             mol = gto.M(atom=atom_spec, basis=basis, charge=charge, spin=spin)
             if memory_mb:
                 mol.max_memory = memory_mb
 
-            if mol.spin == 0:
+            ks_type = select_ks_type(
+                mol=mol,
+                scf_config=scf_config,
+                optimizer_mode=optimizer_mode,
+                multiplicity=multiplicity,
+            )
+            if ks_type == "RKS":
                 mf = dft.RKS(mol)
             else:
                 mf = dft.UKS(mol)
@@ -1937,6 +1953,12 @@ def main():
                 calc_dispersion_model = (
                     sp_dispersion_model if calculation_mode == "single_point" else freq_dispersion_model
                 )
+                calc_ks_type = select_ks_type(
+                    mol=mol,
+                    scf_config=calc_scf_config,
+                    optimizer_mode=optimizer_mode,
+                    multiplicity=multiplicity,
+                )
                 logging.info(
                     "Running capability check for %s calculation (SCF%s)...",
                     "single-point" if calculation_mode == "single_point" else "frequency",
@@ -1955,6 +1977,8 @@ def main():
                     require_hessian=calculation_mode == "frequency",
                     verbose=verbose,
                     memory_mb=memory_mb,
+                    optimizer_mode=optimizer_mode,
+                    multiplicity=multiplicity,
                 )
                 if calculation_mode == "single_point":
                     logging.info("Starting single-point energy calculation...")
@@ -2053,6 +2077,7 @@ def main():
                     "charge": charge,
                     "spin": spin,
                     "multiplicity": multiplicity,
+                    "ks_type": calc_ks_type,
                     "thread_count": thread_count,
                     "effective_thread_count": effective_threads,
                     "openmp_available": openmp_available,
@@ -2101,6 +2126,9 @@ def main():
                             calc_dispersion_model,
                             verbose,
                             memory_mb,
+                            optimizer_mode=optimizer_mode,
+                            multiplicity=multiplicity,
+                            log_override=False,
                         )
                         calculation_metadata["dispersion_info"] = sp_result.get("dispersion")
                         energy = sp_result.get("energy")
@@ -2137,6 +2165,9 @@ def main():
                             freq_dispersion_mode,
                             verbose,
                             memory_mb,
+                            optimizer_mode=optimizer_mode,
+                            multiplicity=multiplicity,
+                            log_override=False,
                         )
                         imaginary_check = frequency_result.get("imaginary_check") or {}
                         imaginary_status = imaginary_check.get("status")
@@ -2232,6 +2263,8 @@ def main():
                     require_hessian=False,
                     verbose=verbose,
                     memory_mb=memory_mb,
+                    optimizer_mode=optimizer_mode,
+                    multiplicity=multiplicity,
                 )
                 if frequency_enabled:
                     logging.info(
@@ -2250,6 +2283,8 @@ def main():
                         require_hessian=True,
                         verbose=verbose,
                         memory_mb=memory_mb,
+                        optimizer_mode=optimizer_mode,
+                        multiplicity=multiplicity,
                     )
 
                 logging.info("Starting geometry optimization...")
@@ -2354,6 +2389,7 @@ def main():
                     "charge": charge,
                     "spin": spin,
                     "multiplicity": multiplicity,
+                    "ks_type": ks_type,
                     "thread_count": thread_count,
                     "effective_thread_count": effective_threads,
                     "openmp_available": openmp_available,
@@ -2428,6 +2464,7 @@ def main():
                     run_dir,
                     charge,
                     spin,
+                    multiplicity,
                     basis,
                     xc,
                     scf_config,
@@ -2515,6 +2552,8 @@ def main():
                         freq_dispersion_mode,
                         verbose,
                         memory_mb,
+                        optimizer_mode=optimizer_mode,
+                        multiplicity=multiplicity,
                     )
                     imaginary_count = frequency_result.get("imaginary_count")
                     imaginary_check = frequency_result.get("imaginary_check") or {}
@@ -2600,6 +2639,8 @@ def main():
                         freq_dispersion_model,
                         verbose,
                         memory_mb,
+                        optimizer_mode=optimizer_mode,
+                        multiplicity=multiplicity,
                     )
                     final_sp_energy = sp_result["energy"]
                     final_sp_converged = sp_result["converged"]

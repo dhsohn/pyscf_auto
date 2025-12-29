@@ -198,6 +198,47 @@ def apply_scf_settings(mf, scf_config):
     return applied
 
 
+def select_ks_type(
+    mol=None,
+    spin=None,
+    scf_config=None,
+    optimizer_mode=None,
+    multiplicity=None,
+    log_override=True,
+):
+    if mol is None and spin is None:
+        raise ValueError("select_ks_type requires either mol or spin.")
+    resolved_spin = mol.spin if mol is not None else spin
+    default_type = "RKS" if resolved_spin == 0 else "UKS"
+    force_restricted = bool(scf_config.get("force_restricted")) if scf_config else False
+    force_unrestricted = bool(scf_config.get("force_unrestricted")) if scf_config else False
+    if force_restricted and force_unrestricted:
+        raise ValueError(
+            "Config 'scf' must not set both 'force_restricted' and 'force_unrestricted'."
+        )
+    if force_restricted or force_unrestricted:
+        if optimizer_mode == "transition_state" and multiplicity and multiplicity > 1:
+            if log_override:
+                logging.warning(
+                    "SCF override requested (%s) ignored for transition-state multiplicity %s; "
+                    "using default %s.",
+                    "force_restricted" if force_restricted else "force_unrestricted",
+                    multiplicity,
+                    default_type,
+                )
+            return default_type
+        requested_type = "RKS" if force_restricted else "UKS"
+        if log_override:
+            logging.warning(
+                "SCF override requested (%s): using %s (default %s).",
+                "force_restricted" if force_restricted else "force_unrestricted",
+                requested_type,
+                default_type,
+            )
+        return requested_type
+    return default_type
+
+
 def _extract_step_count(*candidates):
     for candidate in candidates:
         if candidate is None:
@@ -327,6 +368,9 @@ def compute_single_point_energy(
     dispersion,
     verbose,
     memory_mb,
+    optimizer_mode=None,
+    multiplicity=None,
+    log_override=True,
 ):
     from ase import units
     from ase import Atoms
@@ -339,7 +383,14 @@ def compute_single_point_energy(
         mol_sp.build()
     if memory_mb:
         mol_sp.max_memory = memory_mb
-    if mol_sp.spin == 0:
+    ks_type = select_ks_type(
+        mol=mol_sp,
+        scf_config=scf_config,
+        optimizer_mode=optimizer_mode,
+        multiplicity=multiplicity,
+        log_override=log_override,
+    )
+    if ks_type == "RKS":
         mf_sp = dft.RKS(mol_sp)
     else:
         mf_sp = dft.UKS(mol_sp)
@@ -397,6 +448,9 @@ def compute_frequencies(
     dispersion_hessian_mode,
     verbose,
     memory_mb,
+    optimizer_mode=None,
+    multiplicity=None,
+    log_override=True,
 ):
     from ase import units
     from ase import Atoms
@@ -410,7 +464,14 @@ def compute_frequencies(
         mol_freq.build()
     if memory_mb:
         mol_freq.max_memory = memory_mb
-    if mol_freq.spin == 0:
+    ks_type = select_ks_type(
+        mol=mol_freq,
+        scf_config=scf_config,
+        optimizer_mode=optimizer_mode,
+        multiplicity=multiplicity,
+        log_override=log_override,
+    )
+    if ks_type == "RKS":
         mf_freq = dft.RKS(mol_freq)
     else:
         mf_freq = dft.UKS(mol_freq)
@@ -529,6 +590,8 @@ def run_capability_check(
     verbose=False,
     memory_mb=None,
     max_scf_cycles=1,
+    optimizer_mode=None,
+    multiplicity=None,
 ):
     from pyscf import dft, hessian as pyscf_hessian
 
@@ -538,7 +601,14 @@ def run_capability_check(
         mol_check.build()
     if memory_mb:
         mol_check.max_memory = memory_mb
-    if mol_check.spin == 0:
+    ks_type = select_ks_type(
+        mol=mol_check,
+        scf_config=scf_config,
+        optimizer_mode=optimizer_mode,
+        multiplicity=multiplicity,
+        log_override=False,
+    )
+    if ks_type == "RKS":
         mf_check = dft.RKS(mol_check)
     else:
         mf_check = dft.UKS(mol_check)

@@ -213,8 +213,14 @@ def validate_run_config(config):
             "level_shift": (is_number, "Config '{name}' must be a number (int or float)."),
             "damping": (is_number, "Config '{name}' must be a number (int or float)."),
             "diis": (is_diis, "Config '{name}' must be a boolean or integer."),
+            "force_restricted": (is_bool, "Config '{name}' must be a boolean."),
+            "force_unrestricted": (is_bool, "Config '{name}' must be a boolean."),
         }
         _validate_fields(config["scf"], scf_validation_rules, prefix="scf.")
+        if config["scf"].get("force_restricted") and config["scf"].get("force_unrestricted"):
+            raise ValueError(
+                "Config 'scf' must not set both 'force_restricted' and 'force_unrestricted'."
+            )
     if "single_point" in config and config["single_point"] is not None:
         if not isinstance(config["single_point"], dict):
             raise ValueError("Config 'single_point' must be an object.")
@@ -236,8 +242,18 @@ def validate_run_config(config):
                 "level_shift": (is_number, "Config '{name}' must be a number (int or float)."),
                 "damping": (is_number, "Config '{name}' must be a number (int or float)."),
                 "diis": (is_diis, "Config '{name}' must be a boolean or integer."),
+                "force_restricted": (is_bool, "Config '{name}' must be a boolean."),
+                "force_unrestricted": (is_bool, "Config '{name}' must be a boolean."),
             }
             _validate_fields(config["single_point"]["scf"], scf_validation_rules, prefix="single_point.scf.")
+            if (
+                config["single_point"]["scf"].get("force_restricted")
+                and config["single_point"]["scf"].get("force_unrestricted")
+            ):
+                raise ValueError(
+                    "Config 'single_point.scf' must not set both 'force_restricted' and "
+                    "'force_unrestricted'."
+                )
     for frequency_key in ("frequency", "freq"):
         if frequency_key in config and config[frequency_key] is not None:
             if not isinstance(config[frequency_key], dict):
