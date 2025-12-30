@@ -88,7 +88,8 @@ def _format_json_decode_error(path, error):
         message = (
             "Extra data after the first JSON value. "
             f"remainder preview: {preview}. "
-            f"common causes: {common_causes}."
+            f"common causes: {common_causes}. "
+            "파일에 JSON 객체가 두 개 이상 있음."
         )
     return f"Failed to parse JSON file '{path}' ({location}): {message}"
 
