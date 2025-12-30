@@ -80,7 +80,7 @@ conda install -c conda-forge \
   dftd3-python \
   -y
 
-python -m pip install sella dftd4
+python -m pip install sella dftd4 pytest
 ```
 
 - `dftd3-python`는 D3(BJ) 등을 외부 바이너리 없이 쓰기 위한 권장 의존성입니다.
