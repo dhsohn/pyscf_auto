@@ -1,8 +1,6 @@
-[tool.ruff]
+[tool.ruff.lint]
 select = ["E", "F", "B"]
 ignore = ["E501"]
-line-length = 100
-target-version = "py312"
 
 [tool.ruff.format]
 docstring-code-line-length = 100
