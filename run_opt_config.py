@@ -54,6 +54,26 @@ RUN_CONFIG_EXAMPLES = {
 def load_run_config(config_path):
     if not config_path:
         return {}, None
+    if not os.path.isfile(config_path):
+        default_missing = os.path.basename(str(config_path)) == DEFAULT_CONFIG_PATH
+        example_configs = [
+            name
+            for name in ("run_config_ase.json", "run_config_ts.json")
+            if os.path.isfile(name)
+        ]
+        example_hint = ", ".join(example_configs) if example_configs else "run_config_ase.json"
+        if default_missing:
+            message = (
+                f"Default config '{DEFAULT_CONFIG_PATH}' was not found at '{config_path}'. "
+                f"Copy an example config (e.g., {example_hint}) to {DEFAULT_CONFIG_PATH}, "
+                "or pass --config with a valid JSON file."
+            )
+        else:
+            message = (
+                f"Config file not found: '{config_path}'. "
+                f"Use --config with a valid JSON file (examples: {example_hint})."
+            )
+        raise FileNotFoundError(message)
     with open(config_path, "r", encoding="utf-8") as config_file:
         raw_config = config_file.read()
         try:
