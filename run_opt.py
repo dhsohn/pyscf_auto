@@ -1292,12 +1292,14 @@ def _run_queue_worker(script_path, queue_path, lock_path, runner_lock_path):
                 "--run-id",
                 entry["run_id"],
                 "--no-background",
+                "--non-interactive",
             ]
             timeout_seconds = entry.get("max_runtime_seconds")
             try:
                 result = subprocess.run(
                     command,
                     check=False,
+                    stdin=subprocess.DEVNULL,
                     timeout=timeout_seconds if timeout_seconds else None,
                 )
                 status = "completed" if result.returncode == 0 else "failed"
