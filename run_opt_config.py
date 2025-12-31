@@ -169,13 +169,28 @@ def validate_run_config(config):
     if not isinstance(config, dict):
         raise ValueError("Config must be a JSON object.")
     _validate_schema(config)
-    is_int = lambda value: isinstance(value, int) and not isinstance(value, bool)
-    is_number = lambda value: isinstance(value, (int, float)) and not isinstance(value, bool)
-    is_bool = lambda value: isinstance(value, bool)
-    is_str = lambda value: isinstance(value, str)
-    is_diis = lambda value: isinstance(value, (bool, int))
-    is_positive_int = lambda value: is_int(value) and value > 0
-    is_positive_number = lambda value: is_number(value) and value > 0
+
+    def is_int(value):
+        return isinstance(value, int) and not isinstance(value, bool)
+
+    def is_number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    def is_bool(value):
+        return isinstance(value, bool)
+
+    def is_str(value):
+        return isinstance(value, str)
+
+    def is_diis(value):
+        return isinstance(value, (bool, int))
+
+    def is_positive_int(value):
+        return is_int(value) and value > 0
+
+    def is_positive_number(value):
+        return is_number(value) and value > 0
+
     validation_rules = {
         "threads": (is_positive_int, "Config '{name}' must be a positive integer."),
         "memory_gb": (is_positive_number, "Config '{name}' must be a positive number (int or float)."),

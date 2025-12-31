@@ -21,14 +21,14 @@ def _resolve_pyscf_root(explicit_root: str | None) -> Path:
         import pyscf  # type: ignore
 
         return Path(pyscf.__file__).resolve().parent
-    except Exception:
+    except Exception as err:
         repo_root = Path(__file__).resolve().parents[1]
         candidate = repo_root / "pyscf" / "pyscf"
         if candidate.exists():
             return candidate
         raise RuntimeError(
             "Unable to locate PySCF package. Provide --pyscf-root to point to it."
-        )
+        ) from err
 
 
 def _download(url: str, dest: Path) -> None:

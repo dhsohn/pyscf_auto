@@ -101,7 +101,7 @@ def _build_atom_spec_from_ase(atoms):
     lines = []
     for symbol, (x, y, z) in zip(
         atoms.get_chemical_symbols(),
-        atoms.get_positions()),
+        atoms.get_positions(),
         strict=True,
     ):
         lines.append(f"{symbol} {x:.8f} {y:.8f} {z:.8f}")
@@ -931,7 +931,7 @@ def _acquire_lock(lock_path, timeout=10, delay=0.1, stale_timeout=60):
                 except FileNotFoundError:
                     continue
             if time.time() - start_time > timeout:
-                raise TimeoutError(f"Timed out waiting for lock: {lock_path}")
+                raise TimeoutError(f"Timed out waiting for lock: {lock_path}") from None
             time.sleep(delay)
             continue
         else:
@@ -1313,11 +1313,17 @@ def _run_queue_worker(script_path, queue_path, lock_path, runner_lock_path):
                 exit_code = -1
             finished_at = datetime.now().isoformat()
 
-            def _apply_update(item):
-                if item.get("run_id") == entry["run_id"]:
-                    item["status"] = status
-                    item["ended_at"] = finished_at
-                    item["exit_code"] = exit_code
+            def _apply_update(
+                item,
+                run_id=entry["run_id"],
+                update_status=status,
+                finished_time=finished_at,
+                update_exit_code=exit_code,
+            ):
+                if item.get("run_id") == run_id:
+                    item["status"] = update_status
+                    item["ended_at"] = finished_time
+                    item["exit_code"] = update_exit_code
 
             _update_queue_entry(queue_path, lock_path, entry["run_id"], _apply_update)
             _record_status_event(

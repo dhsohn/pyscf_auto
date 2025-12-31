@@ -32,9 +32,9 @@ def _extract_energy(*candidates):
         if obj is None:
             continue
         if hasattr(obj, "e_tot"):
-            return getattr(obj, "e_tot")
+            return obj.e_tot
         if hasattr(obj, "energy_tot"):
-            return getattr(obj, "energy_tot")
+            return obj.energy_tot
     return None
 
 

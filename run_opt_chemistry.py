@@ -1,6 +1,7 @@
 import logging
 import re
 
+from run_opt_config import DEFAULT_CHARGE, DEFAULT_MULTIPLICITY, DEFAULT_SPIN
 from run_opt_dispersion import load_d3_calculator, parse_dispersion_settings
 
 
@@ -13,10 +14,6 @@ def normalize_xc_functional(xc):
         "wb97xd3": "WB97X_D3",
     }
     return mapping.get(normalized, xc)
-
-
-
-from run_opt_config import DEFAULT_CHARGE, DEFAULT_MULTIPLICITY, DEFAULT_SPIN
 
 
 def _compute_dispersion_energy(atoms, dispersion_settings):
