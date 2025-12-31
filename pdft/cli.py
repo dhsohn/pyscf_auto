@@ -2,9 +2,6 @@ import argparse
 
 from .run_opt_config import (
     DEFAULT_CONFIG_PATH,
-    DEFAULT_QUEUE_LOCK_PATH,
-    DEFAULT_QUEUE_PATH,
-    DEFAULT_RUN_METADATA_PATH,
     DEFAULT_SOLVENT_MAP_PATH,
 )
 
