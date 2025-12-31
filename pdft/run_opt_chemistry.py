@@ -3,6 +3,7 @@ import re
 
 from .run_opt_config import DEFAULT_CHARGE, DEFAULT_MULTIPLICITY, DEFAULT_SPIN
 from .run_opt_dispersion import load_d3_calculator, parse_dispersion_settings
+from .run_opt_utils import extract_step_count
 
 
 def normalize_xc_functional(xc):
@@ -237,21 +238,6 @@ def select_ks_type(
     return default_type
 
 
-def _extract_step_count(*candidates):
-    for candidate in candidates:
-        if candidate is None:
-            continue
-        for attr in ("n_steps", "nsteps", "nstep", "steps", "step_count"):
-            if not hasattr(candidate, attr):
-                continue
-            value = getattr(candidate, attr)
-            if isinstance(value, list):
-                return len(value)
-            if isinstance(value, int):
-                return value
-    return None
-
-
 def _smd_available(mf):
     if not hasattr(mf, "SMD"):
         return False
@@ -429,7 +415,7 @@ def compute_single_point_energy(
     return {
         "energy": energy,
         "converged": getattr(mf_sp, "converged", None),
-        "cycles": _extract_step_count(mf_sp),
+        "cycles": extract_step_count(mf_sp),
         "dispersion": dispersion_info,
     }
 
@@ -573,7 +559,7 @@ def compute_frequencies(
     return {
         "energy": energy,
         "converged": getattr(mf_freq, "converged", None),
-        "cycles": _extract_step_count(mf_freq),
+        "cycles": extract_step_count(mf_freq),
         "frequencies_wavenumber": freq_wavenumber_list,
         "frequencies_au": freq_au_list,
         "zpe": zpe_value,

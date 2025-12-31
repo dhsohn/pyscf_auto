@@ -8,23 +8,9 @@ import tempfile
 from importlib import metadata as importlib_metadata
 
 from .run_opt_resources import ensure_parent_dir
+from .run_opt_utils import extract_step_count
 
 RUN_METADATA_SCHEMA_VERSION = 1
-
-
-def _extract_step_count(*candidates):
-    for candidate in candidates:
-        if candidate is None:
-            continue
-        for attr in ("n_steps", "nsteps", "nstep", "steps", "step_count"):
-            if not hasattr(candidate, attr):
-                continue
-            value = getattr(candidate, attr)
-            if isinstance(value, list):
-                return len(value)
-            if isinstance(value, int):
-                return value
-    return None
 
 
 def _extract_energy(*candidates):
@@ -168,7 +154,7 @@ def build_run_summary(
         converged = bool(completed)
     n_steps_value = n_steps
     if n_steps_value is None:
-        n_steps_value = _extract_step_count(
+        n_steps_value = extract_step_count(
             mf, getattr(mf, "opt", None), getattr(mf, "optimizer", None)
         )
     final_energy = final_sp_energy if final_sp_energy is not None else opt_final_energy
