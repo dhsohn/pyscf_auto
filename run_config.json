@@ -1,0 +1,55 @@
+{
+  "threads": 4,
+  "memory_gb": 8,
+  "enforce_os_memory_limit": false,
+  "verbose": true,
+  "basis": "6-31g",
+  "xc": "b3lyp",
+  "dispersion": "d3bj",
+  "optimizer": {
+    "output_xyz": "ase_optimized.xyz",
+    "ase": {
+      "d3_command": null,
+      "d3_backend": "dftd3",
+      "d3_params": {
+        "damping": {
+          "s6": 1.0,
+          "s8": 1.9889,
+          "a1": 0.3981,
+          "a2": 4.4211
+        }
+      },
+      "optimizer": "bfgs",
+      "fmax": 0.05,
+      "steps": 200,
+      "trajectory": "ase_opt.traj",
+      "logfile": "ase_opt.log"
+    }
+  },
+  "solvent": "vacuum",
+  "solvent_model": "smd",
+  "solvent_map": "solvent_dielectric.json",
+  "log_file": "run.log",
+  "scf": {
+    "max_cycle": 200,
+    "conv_tol": 1e-7,
+    "diis": 8,
+    "level_shift": 0.0,
+    "damping": 0.0
+  },
+  "single_point": {
+    "basis": "6-31g",
+    "xc": "b3lyp",
+    "dispersion": "d3bj",
+    "solvent": "vacuum",
+    "solvent_model": "smd",
+    "solvent_map": "solvent_dielectric.json",
+    "scf": {
+      "max_cycle": 200,
+      "conv_tol": 1e-7,
+      "diis": 8,
+      "level_shift": 0.0,
+      "damping": 0.0
+    }
+  }
+}
