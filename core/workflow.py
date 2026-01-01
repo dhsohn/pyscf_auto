@@ -1,4 +1,5 @@
 import importlib.util
+import itertools
 import json
 import logging
 import os
@@ -40,6 +41,7 @@ from .run_opt_config import (
     DEFAULT_QUEUE_PATH,
     DEFAULT_QUEUE_RUNNER_LOG_PATH,
     DEFAULT_RUN_METADATA_PATH,
+    DEFAULT_SCAN_RESULT_PATH,
     DEFAULT_SOLVENT_MAP_PATH,
     DEFAULT_THREAD_COUNT,
     RunConfig,
@@ -249,10 +251,192 @@ def _normalize_calculation_mode(mode_value):
         "reactioncoordinate",
     ):
         return "irc"
+    if normalized in ("scan", "scanning", "scanmode"):
+        return "scan"
     raise ValueError(
         "Unsupported calculation mode '{value}'. Use 'optimization', "
-        "'single_point', 'frequency', or 'irc'.".format(value=mode_value)
+        "'single_point', 'frequency', 'irc', or 'scan'.".format(value=mode_value)
     )
+
+
+def _normalize_scan_mode(mode_value):
+    if not mode_value:
+        return "optimization"
+    normalized = re.sub(r"[\s_\-]+", "", str(mode_value)).lower()
+    if normalized in ("optimization", "opt", "geometry", "geom", "optimize"):
+        return "optimization"
+    if normalized in ("singlepoint", "single_point", "single", "sp"):
+        return "single_point"
+    raise ValueError(
+        "Unsupported scan mode '{value}'. Use 'optimization' or 'single_point'.".format(
+            value=mode_value
+        )
+    )
+
+
+def _generate_scan_values(start, end, step):
+    if step == 0:
+        raise ValueError("Scan step must be non-zero.")
+    values = []
+    current = float(start)
+    end_value = float(end)
+    step_value = float(step)
+    tolerance = abs(step_value) * 1.0e-6
+    if step_value > 0 and current > end_value + tolerance:
+        raise ValueError("Scan start must be <= end for positive step.")
+    if step_value < 0 and current < end_value - tolerance:
+        raise ValueError("Scan start must be >= end for negative step.")
+    if step_value > 0:
+        while current <= end_value + tolerance:
+            values.append(current)
+            current += step_value
+    else:
+        while current >= end_value - tolerance:
+            values.append(current)
+            current += step_value
+    if not values:
+        raise ValueError("Scan produced no values; check start/end/step.")
+    return values
+
+
+def _dimension_key(dimension):
+    indices = dimension["indices"]
+    return "{type}:{indices}".format(
+        type=dimension["type"],
+        indices=",".join(str(index) for index in indices),
+    )
+
+
+def _apply_scan_geometry(atoms, dimensions, values):
+    for dimension, value in zip(dimensions, values, strict=True):
+        dimension_type = dimension["type"]
+        indices = dimension["indices"]
+        if dimension_type == "bond":
+            atoms.set_distance(indices[0], indices[1], value, fix=0.5)
+        elif dimension_type == "angle":
+            atoms.set_angle(indices[0], indices[1], indices[2], value)
+        else:
+            atoms.set_dihedral(indices[0], indices[1], indices[2], indices[3], value)
+    return atoms
+
+
+def _atoms_to_atom_spec(atoms):
+    symbols = atoms.get_chemical_symbols()
+    positions = atoms.get_positions()
+    lines = []
+    for symbol, position in zip(symbols, positions, strict=True):
+        lines.append(
+            "{symbol} {x:.10f} {y:.10f} {z:.10f}".format(
+                symbol=symbol, x=position[0], y=position[1], z=position[2]
+            )
+        )
+    return "\n".join(lines)
+
+
+def _build_scan_constraints(dimensions, values):
+    constraints = {}
+    for dimension, value in zip(dimensions, values, strict=True):
+        dim_type = dimension["type"]
+        if dim_type == "bond":
+            constraints.setdefault("bonds", []).append(
+                {"i": dimension["indices"][0], "j": dimension["indices"][1], "length": value}
+            )
+        elif dim_type == "angle":
+            constraints.setdefault("angles", []).append(
+                {
+                    "i": dimension["indices"][0],
+                    "j": dimension["indices"][1],
+                    "k": dimension["indices"][2],
+                    "angle": value,
+                }
+            )
+        else:
+            constraints.setdefault("dihedrals", []).append(
+                {
+                    "i": dimension["indices"][0],
+                    "j": dimension["indices"][1],
+                    "k": dimension["indices"][2],
+                    "l": dimension["indices"][3],
+                    "dihedral": value,
+                }
+            )
+    return constraints
+
+
+def _merge_constraints(base_constraints, scan_constraints):
+    if not base_constraints:
+        return scan_constraints or None
+    merged = {}
+    for key in ("bonds", "angles", "dihedrals"):
+        combined = []
+        base_items = base_constraints.get(key) if isinstance(base_constraints, dict) else None
+        if base_items:
+            combined.extend([dict(item) for item in base_items])
+        scan_items = scan_constraints.get(key)
+        if scan_items:
+            combined.extend(scan_items)
+        if combined:
+            merged[key] = combined
+    return merged or None
+
+
+def _parse_scan_dimensions(scan_config):
+    if not isinstance(scan_config, dict):
+        raise ValueError("Scan configuration must be an object.")
+    raw_dimensions = scan_config.get("dimensions")
+    if raw_dimensions is None:
+        raw_dimensions = [scan_config]
+    if not isinstance(raw_dimensions, list) or not raw_dimensions:
+        raise ValueError("Scan dimensions must be a non-empty list.")
+    dimensions = []
+    for idx, dimension in enumerate(raw_dimensions):
+        if not isinstance(dimension, dict):
+            raise ValueError(f"Scan dimension {idx} must be an object.")
+        dim_type = dimension.get("type")
+        if dim_type not in ("bond", "angle", "dihedral"):
+            raise ValueError(
+                "Scan dimension {idx} must set type to bond, angle, or dihedral.".format(
+                    idx=idx
+                )
+            )
+        required_keys = {"bond": ("i", "j"), "angle": ("i", "j", "k"), "dihedral": ("i", "j", "k", "l")}
+        indices = []
+        for key in required_keys[dim_type]:
+            value = dimension.get(key)
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ValueError(
+                    "Scan dimension {idx} field '{key}' must be an integer.".format(
+                        idx=idx, key=key
+                    )
+                )
+            indices.append(value)
+        dimensions.append(
+            {
+                "type": dim_type,
+                "indices": indices,
+                "start": dimension.get("start"),
+                "end": dimension.get("end"),
+                "step": dimension.get("step"),
+            }
+        )
+    grid = scan_config.get("grid")
+    if grid is not None:
+        if not isinstance(grid, list) or len(grid) != len(dimensions):
+            raise ValueError("Scan grid must match the number of dimensions.")
+        grid_values = []
+        for idx, values in enumerate(grid):
+            if not isinstance(values, list) or not values:
+                raise ValueError(f"Scan grid entry {idx} must be a non-empty list.")
+            grid_values.append([float(value) for value in values])
+        return dimensions, grid_values
+    values_list = []
+    for dimension in dimensions:
+        if dimension["start"] is None or dimension["end"] is None or dimension["step"] is None:
+            raise ValueError("Scan dimensions require start/end/step when grid is not set.")
+        values_list.append(
+            _generate_scan_values(dimension["start"], dimension["end"], dimension["step"])
+        )
+    return dimensions, values_list
 
 
 def run_doctor():
@@ -336,8 +520,20 @@ def prepare_run_context(args, config: RunConfig, config_raw):
     optimizer_ase_config = optimizer_config.ase if optimizer_config else None
     optimizer_ase_dict = optimizer_ase_config.to_dict() if optimizer_ase_config else {}
     constraints = config.constraints
+    scan_config = config.scan2d or config.scan
+    if config.scan and config.scan2d:
+        raise ValueError("Config must not define both 'scan' and 'scan2d'.")
+    if scan_config and calculation_mode != "scan":
+        raise ValueError("Scan configuration requires calculation_mode='scan'.")
+    if calculation_mode == "scan" and not scan_config:
+        raise ValueError("calculation_mode='scan' requires a scan configuration.")
+    scan_mode = None
+    if scan_config:
+        scan_mode = _normalize_scan_mode(scan_config.get("mode"))
     optimizer_mode = None
-    if calculation_mode in ("optimization", "irc"):
+    if calculation_mode in ("optimization", "irc") or (
+        calculation_mode == "scan" and scan_mode == "optimization"
+    ):
         optimizer_mode = _normalize_optimizer_mode(
             optimizer_config.mode if optimizer_config else ("transition_state" if calculation_mode == "irc" else None)
         )
@@ -381,11 +577,13 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         run_dir, config.frequency_file or DEFAULT_FREQUENCY_PATH
     )
     irc_output_path = resolve_run_path(run_dir, config.irc_file or DEFAULT_IRC_PATH)
+    scan_result_path = resolve_run_path(run_dir, DEFAULT_SCAN_RESULT_PATH)
     ensure_parent_dir(log_path)
     ensure_parent_dir(optimized_xyz_path)
     ensure_parent_dir(run_metadata_path)
     ensure_parent_dir(frequency_output_path)
     ensure_parent_dir(irc_output_path)
+    ensure_parent_dir(scan_result_path)
 
     if args.interactive:
         config_used_path = resolve_run_path(run_dir, "config_used.json")
@@ -415,6 +613,8 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         "optimizer_ase_dict": optimizer_ase_dict,
         "optimizer_mode": optimizer_mode,
         "constraints": constraints,
+        "scan_config": scan_config,
+        "scan_mode": scan_mode,
         "solvent_map_path": solvent_map_path,
         "single_point_config": single_point_config,
         "thermo": thermo_config,
@@ -430,6 +630,7 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         "run_metadata_path": run_metadata_path,
         "frequency_output_path": frequency_output_path,
         "irc_output_path": irc_output_path,
+        "scan_result_path": scan_result_path,
         "event_log_path": event_log_path,
         "run_id": run_id,
         "irc_enabled": irc_enabled,
@@ -869,6 +1070,272 @@ def run_irc_stage(stage_context, queue_update_fn):
             stage_context["run_id"],
             stage_context["run_dir"],
             calculation_metadata,
+            status="failed",
+            previous_status="running",
+            queue_update_fn=queue_update_fn,
+            exit_code=1,
+            details={"error": str(exc)},
+            error=exc,
+        )
+        raise
+
+
+def run_scan_stage(
+    args,
+    context,
+    molecule_context,
+    memory_mb,
+    memory_limit_status,
+    memory_limit_enforced,
+    openmp_available,
+    effective_threads,
+    queue_update_fn,
+):
+    from ase.io import read as ase_read
+    from ase.io import write as ase_write
+    from pyscf import gto
+
+    scan_config = context["scan_config"] or {}
+    scan_mode = context["scan_mode"]
+    dimensions, values_grid = _parse_scan_dimensions(scan_config)
+    scan_points = list(itertools.product(*values_grid))
+
+    run_dir = context["run_dir"]
+    log_path = context["log_path"]
+    run_metadata_path = context["run_metadata_path"]
+    scan_result_path = context["scan_result_path"]
+    event_log_path = context["event_log_path"]
+    run_id = context["run_id"]
+    charge = molecule_context["charge"]
+    spin = molecule_context["spin"]
+    multiplicity = molecule_context["multiplicity"]
+    verbose = context["verbose"]
+    thread_count = context["thread_count"]
+
+    scan_dir = resolve_run_path(run_dir, "scan")
+    os.makedirs(scan_dir, exist_ok=True)
+
+    calc_basis = context["basis"]
+    calc_xc = context["xc"]
+    calc_scf_config = context["scf_config"]
+    calc_solvent_name = context["solvent_name"]
+    calc_solvent_model = context["solvent_model"]
+    calc_eps = context["eps"]
+    calc_dispersion_model = context["dispersion_model"]
+    optimizer_mode = context["optimizer_mode"]
+    optimizer_ase_dict = context["optimizer_ase_dict"]
+
+    if scan_mode == "single_point":
+        calc_basis = context["sp_basis"]
+        calc_xc = context["sp_xc"]
+        calc_scf_config = context["sp_scf_config"]
+        calc_solvent_name = context["sp_solvent_name"]
+        calc_solvent_model = context["sp_solvent_model"]
+        calc_eps = context["sp_eps"]
+        calc_dispersion_model = context["sp_dispersion_model"]
+
+    scan_summary = {
+        "status": "running",
+        "run_directory": run_dir,
+        "run_started_at": datetime.now().isoformat(),
+        "run_id": run_id,
+        "pid": os.getpid(),
+        "xyz_file": args.xyz_file,
+        "xyz_file_hash": compute_file_hash(args.xyz_file),
+        "basis": calc_basis,
+        "xc": calc_xc,
+        "solvent": calc_solvent_name,
+        "solvent_model": calc_solvent_model if calc_solvent_name else None,
+        "solvent_eps": calc_eps,
+        "dispersion": calc_dispersion_model,
+        "scan": {
+            "mode": scan_mode,
+            "dimensions": dimensions,
+            "grid_counts": [len(values) for values in values_grid],
+            "total_points": len(scan_points),
+        },
+        "scan_result_file": scan_result_path,
+        "calculation_mode": "scan",
+        "charge": charge,
+        "spin": spin,
+        "multiplicity": multiplicity,
+        "thread_count": thread_count,
+        "effective_thread_count": effective_threads,
+        "openmp_available": openmp_available,
+        "memory_mb": memory_mb,
+        "memory_limit_status": memory_limit_status,
+        "log_file": log_path,
+        "event_log_file": event_log_path,
+        "run_metadata_file": run_metadata_path,
+        "config_file": args.config,
+        "config": context["config_dict"],
+        "config_raw": context["config_raw"],
+        "config_hash": compute_text_hash(context["config_raw"]),
+        "scf_config": calc_scf_config,
+        "scf_settings": calc_scf_config,
+        "environment": collect_environment_snapshot(thread_count),
+        "git": collect_git_metadata(os.getcwd()),
+        "versions": {
+            "ase": get_package_version("ase"),
+            "pyscf": get_package_version("pyscf"),
+            "dftd3": get_package_version("dftd3"),
+            "dftd4": get_package_version("dftd4"),
+        },
+    }
+    scan_summary["run_updated_at"] = datetime.now().isoformat()
+    write_run_metadata(run_metadata_path, scan_summary)
+    record_status_event(
+        event_log_path,
+        run_id,
+        run_dir,
+        "running",
+        previous_status=None,
+    )
+
+    mol = molecule_context["mol"]
+    run_capability_check(
+        mol,
+        calc_basis,
+        calc_xc,
+        calc_scf_config,
+        calc_solvent_model if calc_solvent_name else None,
+        calc_solvent_name,
+        calc_eps,
+        None,
+        "none",
+        require_hessian=False,
+        verbose=verbose,
+        memory_mb=memory_mb,
+        optimizer_mode=optimizer_mode,
+        multiplicity=multiplicity,
+    )
+
+    logging.info("Starting scan (%s mode) with %d points.", scan_mode, len(scan_points))
+    if thread_count:
+        logging.info("Using threads: %s", thread_count)
+    if memory_mb:
+        logging.info("Memory target: %s MB (PySCF max_memory)", memory_mb)
+    if log_path:
+        logging.info("Log file: %s", log_path)
+    if scan_result_path:
+        logging.info("Scan results file: %s", scan_result_path)
+
+    run_start = time.perf_counter()
+    base_atoms = ase_read(args.xyz_file)
+    results = []
+    try:
+        for index, values in enumerate(scan_points):
+            point_label = {"index": index}
+            for dimension, value in zip(dimensions, values, strict=True):
+                point_label[_dimension_key(dimension)] = value
+            atoms = base_atoms.copy()
+            _apply_scan_geometry(atoms, dimensions, values)
+            input_xyz_path = resolve_run_path(scan_dir, f"scan_{index:03d}_input.xyz")
+            ase_write(input_xyz_path, atoms)
+            output_xyz_path = None
+            n_steps = None
+            scf_result = None
+            if scan_mode == "optimization":
+                output_xyz_path = resolve_run_path(
+                    scan_dir, f"scan_{index:03d}_optimized.xyz"
+                )
+                scan_constraints = _build_scan_constraints(dimensions, values)
+                merged_constraints = _merge_constraints(
+                    context["constraints"], scan_constraints
+                )
+                n_steps = _run_ase_optimizer(
+                    input_xyz_path,
+                    output_xyz_path,
+                    run_dir,
+                    charge,
+                    spin,
+                    multiplicity,
+                    calc_basis,
+                    calc_xc,
+                    calc_scf_config,
+                    calc_solvent_model.lower() if calc_solvent_model else None,
+                    calc_solvent_name,
+                    calc_eps,
+                    calc_dispersion_model,
+                    verbose,
+                    memory_mb,
+                    optimizer_ase_dict,
+                    optimizer_mode,
+                    merged_constraints,
+                )
+                atoms = ase_read(output_xyz_path)
+            atom_spec = _atoms_to_atom_spec(atoms)
+            mol_scan = gto.M(
+                atom=atom_spec,
+                basis=calc_basis,
+                charge=charge,
+                spin=spin,
+            )
+            if memory_mb:
+                mol_scan.max_memory = memory_mb
+            scf_result = compute_single_point_energy(
+                mol_scan,
+                calc_basis,
+                calc_xc,
+                calc_scf_config,
+                calc_solvent_model if calc_solvent_name else None,
+                calc_solvent_name,
+                calc_eps,
+                calc_dispersion_model,
+                verbose,
+                memory_mb,
+                optimizer_mode=optimizer_mode,
+                multiplicity=multiplicity,
+                log_override=False,
+            )
+            point_result = {
+                "index": index,
+                "values": point_label,
+                "mode": scan_mode,
+                "energy": scf_result.get("energy") if scf_result else None,
+                "converged": scf_result.get("converged") if scf_result else None,
+                "cycles": scf_result.get("cycles") if scf_result else None,
+                "optimizer_steps": n_steps,
+                "input_xyz": input_xyz_path,
+                "output_xyz": output_xyz_path,
+            }
+            results.append(point_result)
+            with open(scan_result_path, "w", encoding="utf-8") as handle:
+                json.dump({"results": results}, handle, indent=2)
+            scan_summary["scan"]["completed_points"] = len(results)
+            scan_summary["run_updated_at"] = datetime.now().isoformat()
+            write_run_metadata(run_metadata_path, scan_summary)
+        elapsed_seconds = time.perf_counter() - run_start
+        converged_points = sum(
+            1 for item in results if item.get("converged") is True
+        )
+        scan_summary["summary"] = {
+            "elapsed_seconds": elapsed_seconds,
+            "n_points": len(results),
+            "converged_points": converged_points,
+            "final_energy": results[-1]["energy"] if results else None,
+            "converged": converged_points == len(results) if results else False,
+        }
+        scan_summary["summary"]["memory_limit_enforced"] = memory_limit_enforced
+        finalize_metadata(
+            run_metadata_path,
+            event_log_path,
+            run_id,
+            run_dir,
+            scan_summary,
+            status="completed",
+            previous_status="running",
+            queue_update_fn=queue_update_fn,
+            exit_code=0,
+        )
+    except Exception as exc:
+        logging.exception("Scan calculation failed.")
+        finalize_metadata(
+            run_metadata_path,
+            event_log_path,
+            run_id,
+            run_dir,
+            scan_summary,
             status="failed",
             previous_status="running",
             queue_update_fn=queue_update_fn,
@@ -1536,6 +2003,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
     solvent_model = context["solvent_model"]
     dispersion_model = context["dispersion_model"]
     optimizer_mode = context["optimizer_mode"]
+    scan_mode = context["scan_mode"]
     solvent_map_path = context["solvent_map_path"]
     single_point_config = context["single_point_config"]
     config_raw = context["config_raw"]
@@ -1617,6 +2085,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             "single_point": "Single-point",
             "frequency": "Frequency",
             "irc": "IRC",
+            "scan": "Scan",
         }[calculation_mode]
         dispersion_model = _normalize_dispersion_settings(
             calculation_label,
@@ -1661,7 +2130,9 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
         if verbose:
             mf.verbose = 4
         applied_scf = scf_config or None
-        if calculation_mode == "optimization":
+        if calculation_mode == "optimization" or (
+            calculation_mode == "scan" and scan_mode == "optimization"
+        ):
             applied_scf = apply_scf_settings(mf, scf_config)
         context["applied_scf"] = applied_scf
 
@@ -1771,6 +2242,19 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
         context["freq_dispersion_mode"] = freq_dispersion_mode
         context["freq_dispersion_model"] = freq_dispersion_model
 
+        if calculation_mode == "scan":
+            run_scan_stage(
+                args,
+                context,
+                molecule_context,
+                memory_mb,
+                memory_limit_status,
+                memory_limit_enforced,
+                openmp_available,
+                effective_threads,
+                _update_foreground_queue,
+            )
+            return
         if calculation_mode != "optimization":
             calc_basis = sp_basis
             calc_xc = sp_xc

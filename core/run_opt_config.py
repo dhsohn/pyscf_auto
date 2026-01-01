@@ -18,10 +18,27 @@ DEFAULT_OPTIMIZED_XYZ_PATH = "optimized.xyz"
 DEFAULT_FREQUENCY_PATH = "frequency_result.json"
 DEFAULT_IRC_PATH = "irc_result.json"
 DEFAULT_RUN_METADATA_PATH = "metadata.json"
+DEFAULT_SCAN_RESULT_PATH = "scan_result.json"
 DEFAULT_QUEUE_PATH = "runs/queue.json"
 DEFAULT_QUEUE_LOCK_PATH = "runs/queue.lock"
 DEFAULT_QUEUE_RUNNER_LOCK_PATH = "runs/queue.runner.lock"
 DEFAULT_QUEUE_RUNNER_LOG_PATH = "log/queue_runner.log"
+
+SCAN_DIMENSION_SCHEMA = {
+    "type": "object",
+    "required": ["type"],
+    "properties": {
+        "type": {"type": "string", "enum": ["bond", "angle", "dihedral"]},
+        "i": {"type": "integer", "minimum": 0},
+        "j": {"type": "integer", "minimum": 0},
+        "k": {"type": "integer", "minimum": 0},
+        "l": {"type": "integer", "minimum": 0},
+        "start": {"type": ["number", "integer"]},
+        "end": {"type": ["number", "integer"]},
+        "step": {"type": ["number", "integer"]},
+    },
+    "additionalProperties": True,
+}
 
 RUN_CONFIG_SCHEMA = {
     "type": "object",
@@ -39,7 +56,7 @@ RUN_CONFIG_SCHEMA = {
         "dispersion": {"type": ["string", "null"], "enum": ["d3bj", "d3zero", "d4", None]},
         "calculation_mode": {
             "type": "string",
-            "enum": ["optimization", "single_point", "frequency", "irc"],
+            "enum": ["optimization", "single_point", "frequency", "irc", "scan"],
         },
         "irc_enabled": {"type": ["boolean", "null"]},
         "irc_file": {"type": ["string", "null"]},
@@ -125,6 +142,53 @@ RUN_CONFIG_SCHEMA = {
             },
             "additionalProperties": False,
         },
+        "scan": {
+            "type": ["object", "null"],
+            "properties": {
+                "type": {"type": "string", "enum": ["bond", "angle", "dihedral"]},
+                "i": {"type": "integer", "minimum": 0},
+                "j": {"type": "integer", "minimum": 0},
+                "k": {"type": "integer", "minimum": 0},
+                "l": {"type": "integer", "minimum": 0},
+                "start": {"type": ["number", "integer"]},
+                "end": {"type": ["number", "integer"]},
+                "step": {"type": ["number", "integer"]},
+                "mode": {"type": "string", "enum": ["optimization", "single_point"]},
+                "dimensions": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": SCAN_DIMENSION_SCHEMA,
+                },
+                "grid": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {"type": ["number", "integer"]},
+                    },
+                },
+            },
+            "additionalProperties": True,
+        },
+        "scan2d": {
+            "type": ["object", "null"],
+            "properties": {
+                "mode": {"type": "string", "enum": ["optimization", "single_point"]},
+                "dimensions": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": SCAN_DIMENSION_SCHEMA,
+                },
+                "grid": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {"type": ["number", "integer"]},
+                    },
+                },
+            },
+            "additionalProperties": True,
+        },
     },
     "additionalProperties": True,
 }
@@ -145,6 +209,10 @@ RUN_CONFIG_EXAMPLES = {
         "\"constraints\": {\"bonds\": [{\"i\": 0, \"j\": 1, \"length\": 1.10}], "
         "\"angles\": [{\"i\": 0, \"j\": 1, \"k\": 2, \"angle\": 120.0}], "
         "\"dihedrals\": [{\"i\": 0, \"j\": 1, \"k\": 2, \"l\": 3, \"dihedral\": 180.0}]}"
+    ),
+    "scan": (
+        "\"scan\": {\"type\": \"bond\", \"i\": 0, \"j\": 1, \"start\": 1.0, "
+        "\"end\": 2.0, \"step\": 0.1, \"mode\": \"optimization\"}"
     ),
 }
 
@@ -381,6 +449,8 @@ class RunConfig:
     irc: IrcConfig | None = None
     thermo: ThermoConfig | None = None
     constraints: dict[str, Any] | None = None
+    scan: dict[str, Any] | None = None
+    scan2d: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "RunConfig":
@@ -418,6 +488,8 @@ class RunConfig:
             irc=IrcConfig.from_dict(data.get("irc")),
             thermo=ThermoConfig.from_dict(data.get("thermo")),
             constraints=data.get("constraints"),
+            scan=data.get("scan"),
+            scan2d=data.get("scan2d"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -561,6 +633,134 @@ def validate_run_config(config):
 
     def is_positive_number(value):
         return is_number(value) and value > 0
+
+    def normalize_calc_mode(value):
+        if not value:
+            return None
+        normalized = re.sub(r"[\s_\-]+", "", str(value)).lower()
+        if normalized in (
+            "optimization",
+            "opt",
+            "geometry",
+            "geom",
+            "structure",
+            "structureoptimization",
+            "구조최적화",
+            "구조최적",
+        ):
+            return "optimization"
+        if normalized in (
+            "singlepoint",
+            "singlepointenergy",
+            "singlepointenergycalculation",
+            "singlepointenergycalc",
+            "singlepointcalc",
+            "single_point",
+            "single",
+            "sp",
+            "단일점",
+            "단일점에너지",
+            "단일점에너지계산",
+        ):
+            return "single_point"
+        if normalized in (
+            "frequency",
+            "frequencies",
+            "freq",
+            "vibration",
+            "vibrational",
+            "프리퀀시",
+            "진동",
+        ):
+            return "frequency"
+        if normalized in (
+            "irc",
+            "intrinsicreactioncoordinate",
+            "reactionpath",
+            "reactioncoordinate",
+        ):
+            return "irc"
+        if normalized in ("scan", "scanning"):
+            return "scan"
+        return None
+
+    def _validate_scan_dimension(dim, path, require_bounds=True):
+        if not isinstance(dim, dict):
+            raise ValueError(f"Config '{path}' must be an object.")
+        dim_type = dim.get("type")
+        if not isinstance(dim_type, str):
+            raise ValueError(f"Config '{path}.type' must be a string.")
+        if dim_type not in ("bond", "angle", "dihedral"):
+            raise ValueError(
+                f"Config '{path}.type' must be one of: bond, angle, dihedral."
+            )
+        required_indices = {"bond": ("i", "j"), "angle": ("i", "j", "k"), "dihedral": ("i", "j", "k", "l")}
+        for key in required_indices[dim_type]:
+            value = dim.get(key)
+            if not is_int(value) or isinstance(value, bool):
+                raise ValueError(
+                    "Config '{path}.{key}' must be an integer.".format(path=path, key=key)
+                )
+            if value < 0:
+                raise ValueError(
+                    "Config '{path}.{key}' must be >= 0.".format(path=path, key=key)
+                )
+        if require_bounds:
+            for key in ("start", "end", "step"):
+                value = dim.get(key)
+                if not is_number(value):
+                    raise ValueError(
+                        "Config '{path}.{key}' must be a number.".format(path=path, key=key)
+                    )
+            if dim.get("step") == 0:
+                raise ValueError(f"Config '{path}.step' must be non-zero.")
+
+    def _validate_scan_config(scan, name, require_dimensions=False):
+        if not isinstance(scan, dict):
+            raise ValueError(f"Config '{name}' must be an object.")
+        mode_value = scan.get("mode")
+        if mode_value is not None:
+            if not isinstance(mode_value, str):
+                raise ValueError(f"Config '{name}.mode' must be a string.")
+            if mode_value not in ("optimization", "single_point"):
+                raise ValueError(
+                    f"Config '{name}.mode' must be one of: optimization, single_point."
+                )
+        dimensions = scan.get("dimensions")
+        grid = scan.get("grid")
+        if require_dimensions or dimensions is not None:
+            if not isinstance(dimensions, list) or not dimensions:
+                raise ValueError(f"Config '{name}.dimensions' must be a non-empty list.")
+            if name == "scan2d" and len(dimensions) != 2:
+                raise ValueError("Config 'scan2d.dimensions' must have exactly 2 entries.")
+            require_bounds = grid is None
+            for idx, dim in enumerate(dimensions):
+                _validate_scan_dimension(dim, f"{name}.dimensions[{idx}]", require_bounds)
+            if grid is not None:
+                if not isinstance(grid, list):
+                    raise ValueError(f"Config '{name}.grid' must be a list.")
+                if len(grid) != len(dimensions):
+                    raise ValueError(
+                        "Config '{name}.grid' length must match dimensions.".format(
+                            name=name
+                        )
+                    )
+                for idx, values in enumerate(grid):
+                    if not isinstance(values, list) or not values:
+                        raise ValueError(
+                            "Config '{name}.grid[{idx}]' must be a non-empty list.".format(
+                                name=name, idx=idx
+                            )
+                        )
+                    for value in values:
+                        if not is_number(value):
+                            raise ValueError(
+                                "Config '{name}.grid[{idx}]' must contain numbers.".format(
+                                    name=name, idx=idx
+                                )
+                            )
+            return
+        _validate_scan_dimension(scan, name, require_bounds=True)
 
     validation_rules = {
         "threads": (is_positive_int, "Config '{name}' must be a positive integer."),
@@ -894,6 +1094,20 @@ def validate_run_config(config):
             _validate_constraint_list(
                 "dihedrals", dihedrals, ("i", "j", "k", "l"), "dihedral", "dihedral"
             )
+    scan = config.get("scan")
+    scan2d = config.get("scan2d")
+    if scan is not None and scan2d is not None:
+        raise ValueError("Config must not define both 'scan' and 'scan2d'.")
+    if scan is not None:
+        _validate_scan_config(scan, "scan")
+    if scan2d is not None:
+        _validate_scan_config(scan2d, "scan2d", require_dimensions=True)
+    normalized_mode = normalize_calc_mode(config.get("calculation_mode"))
+    if normalized_mode == "scan":
+        if scan is None and scan2d is None:
+            raise ValueError("Config 'calculation_mode' is 'scan' but no scan block exists.")
+    elif scan is not None or scan2d is not None:
+        raise ValueError("Config 'scan' requires 'calculation_mode' to be 'scan'.")
 
 
 def build_run_config(config):

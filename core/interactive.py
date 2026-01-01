@@ -31,6 +31,7 @@ CALCULATION_MODE_OPTIONS = [
     "단일점 에너지 계산",
     "프리퀀시 계산",
     "IRC 계산",
+    "스캔 계산",
 ]
 
 
@@ -82,6 +83,53 @@ def _prompt_yes_no(prompt, default=True):
         print("y 또는 n으로 입력하세요.")
 
 
+def _prompt_int_list(prompt, count):
+    while True:
+        raw = input(f"{prompt} (예: 0,1)\n> ").strip()
+        parts = [part.strip() for part in raw.split(",") if part.strip()]
+        if len(parts) != count:
+            print(f"{count}개의 인덱스를 입력하세요.")
+            continue
+        try:
+            values = [int(part) for part in parts]
+        except ValueError:
+            print("정수 인덱스를 입력하세요.")
+            continue
+        if any(value < 0 for value in values):
+            print("인덱스는 0 이상의 정수여야 합니다.")
+            continue
+        return values
+
+
+def _prompt_float(prompt):
+    while True:
+        raw = input(f"{prompt}\n> ").strip()
+        try:
+            return float(raw)
+        except ValueError:
+            print("숫자를 입력하세요.")
+
+
+def _prompt_scan_dimension():
+    scan_type = _prompt_choice(
+        "스캔 유형을 선택하세요:",
+        ["bond", "angle", "dihedral"],
+    )
+    if scan_type == "bond":
+        indices = _prompt_int_list("bond 인덱스 i,j를 입력하세요", 2)
+    elif scan_type == "angle":
+        indices = _prompt_int_list("angle 인덱스 i,j,k를 입력하세요", 3)
+    else:
+        indices = _prompt_int_list("dihedral 인덱스 i,j,k,l을 입력하세요", 4)
+    start = _prompt_float("시작값(start)을 입력하세요")
+    end = _prompt_float("종료값(end)을 입력하세요")
+    step = _prompt_float("스텝(step)을 입력하세요")
+    dimension = {"type": scan_type, "start": start, "end": end, "step": step}
+    for key, value in zip(("i", "j", "k", "l"), indices, strict=False):
+        dimension[key] = value
+    return dimension
+
+
 def _prompt_interactive_config(args):
     calculation_choice = _prompt_choice(
         "어떤 계산을 진행할까요?",
@@ -92,13 +140,32 @@ def _prompt_interactive_config(args):
         "단일점 에너지 계산": "single_point",
         "프리퀀시 계산": "frequency",
         "IRC 계산": "irc",
+        "스캔 계산": "scan",
     }[calculation_choice]
     optimization_choice = None
+    scan_config = None
     if calculation_mode == "optimization":
         optimization_choice = _prompt_choice(
             "최적화 유형을 선택하세요:",
             ["중간체 최적화", "전이상태 최적화"],
         )
+    if calculation_mode == "scan":
+        scan_mode_choice = _prompt_choice(
+            "스캔 계산 모드를 선택하세요:",
+            ["최적화 스캔", "단일점 스캔"],
+        )
+        scan_mode = "optimization" if scan_mode_choice == "최적화 스캔" else "single_point"
+        dimension_count_choice = _prompt_choice(
+            "스캔 차원을 선택하세요:",
+            ["1D", "2D"],
+        )
+        dimension_count = 1 if dimension_count_choice == "1D" else 2
+        dimensions = [_prompt_scan_dimension() for _ in range(dimension_count)]
+        if dimension_count == 1:
+            scan_config = dimensions[0]
+            scan_config["mode"] = scan_mode
+        else:
+            scan_config = {"dimensions": dimensions, "mode": scan_mode}
     base_config_path = INTERACTIVE_CONFIG
 
     config_filename = base_config_path.name
@@ -283,6 +350,8 @@ def _prompt_interactive_config(args):
     config["solvent"] = solvent
     config["frequency_enabled"] = frequency_enabled
     config["single_point_enabled"] = single_point_enabled
+    if scan_config:
+        config["scan"] = scan_config
     if single_point_config:
         config["single_point"] = single_point_config
     if constraints is None:

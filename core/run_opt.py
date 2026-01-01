@@ -2,6 +2,7 @@
 
 __all__ = ["main"]
 
+import json
 import logging
 import os
 import sys
@@ -16,6 +17,69 @@ from .run_opt_config import (
     build_run_config,
     load_run_config,
 )
+
+
+def _parse_scan_dimension(spec):
+    parts = [part.strip() for part in spec.split(",") if part.strip()]
+    if not parts:
+        raise ValueError("Scan dimension spec must not be empty.")
+    dim_type = parts[0].lower()
+    if dim_type not in ("bond", "angle", "dihedral"):
+        raise ValueError("Scan dimension type must be bond, angle, or dihedral.")
+    index_count = {"bond": 2, "angle": 3, "dihedral": 4}[dim_type]
+    expected_len = 1 + index_count + 3
+    if len(parts) != expected_len:
+        raise ValueError(
+            "Scan dimension spec '{spec}' must have {expected} fields.".format(
+                spec=spec, expected=expected_len
+            )
+        )
+    try:
+        indices = [int(value) for value in parts[1 : 1 + index_count]]
+    except ValueError as exc:
+        raise ValueError("Scan dimension indices must be integers.") from exc
+    try:
+        start, end, step = (float(value) for value in parts[1 + index_count :])
+    except ValueError as exc:
+        raise ValueError("Scan dimension start/end/step must be numbers.") from exc
+    dimension = {"type": dim_type, "start": start, "end": end, "step": step}
+    for key, value in zip(("i", "j", "k", "l"), indices, strict=False):
+        dimension[key] = value
+    return dimension
+
+
+def _apply_scan_cli_overrides(config, args):
+    if not (args.scan_dimension or args.scan_grid or args.scan_mode):
+        return config
+    if args.scan_dimension is None:
+        raise ValueError("--scan-dimension is required when using scan options.")
+    dimensions = [_parse_scan_dimension(spec) for spec in args.scan_dimension]
+    if len(dimensions) not in (1, 2):
+        raise ValueError("Scan mode currently supports 1D or 2D dimensions only.")
+    scan_config = {}
+    if len(dimensions) == 1:
+        scan_config = dimensions[0]
+    else:
+        scan_config["dimensions"] = dimensions
+    if args.scan_grid:
+        if len(args.scan_grid) != len(dimensions):
+            raise ValueError("--scan-grid entries must match scan dimension count.")
+        grid = []
+        for entry in args.scan_grid:
+            values = [value.strip() for value in entry.split(",") if value.strip()]
+            if not values:
+                raise ValueError("--scan-grid entries must contain values.")
+            try:
+                grid.append([float(value) for value in values])
+            except ValueError as exc:
+                raise ValueError("--scan-grid values must be numbers.") from exc
+        scan_config["grid"] = grid
+    if args.scan_mode:
+        scan_config["mode"] = args.scan_mode
+    config = dict(config)
+    config["scan"] = scan_config
+    config["calculation_mode"] = "scan"
+    return config
 
 
 def main():
@@ -107,6 +171,11 @@ def main():
             config, config_raw = load_run_config(config_path)
             args.config = str(config_path)
             config_source_path = config_path
+        if args.scan_dimension or args.scan_grid or args.scan_mode:
+            if args.interactive:
+                raise ValueError("--scan-* options cannot be used with --interactive.")
+            config = _apply_scan_cli_overrides(config, args)
+            config_raw = json.dumps(config, indent=2, ensure_ascii=False)
 
         try:
             config = build_run_config(config)

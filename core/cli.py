@@ -130,6 +130,29 @@ def build_parser():
         metavar="N",
         help="Show a summary list for the most recent N runs.",
     )
+    parser.add_argument(
+        "--scan-dimension",
+        action="append",
+        metavar="SPEC",
+        help=(
+            "Scan dimension spec: 'type,i,j[,k[,l]],start,end,step' "
+            "(e.g., bond,0,1,1.0,2.0,0.1). Provide twice for 2D scans."
+        ),
+    )
+    parser.add_argument(
+        "--scan-mode",
+        choices=["optimization", "single_point"],
+        help="Scan mode to run at each point (optimization or single_point).",
+    )
+    parser.add_argument(
+        "--scan-grid",
+        action="append",
+        metavar="VALUES",
+        help=(
+            "Optional explicit grid values for each scan dimension "
+            "(comma-separated, provide once per dimension)."
+        ),
+    )
     parser.add_argument("--no-background", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--queue-runner", action="store_true", help=argparse.SUPPRESS)
     return parser
