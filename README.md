@@ -128,7 +128,6 @@ conda install -c conda-forge pyscf -y
 ```bash
 git clone https://github.com/pyscf/pyscf.git
 cd pyscf
-git checkout v2.11.0
 
 mkdir -p build
 cmake -S pyscf/lib -B build \
