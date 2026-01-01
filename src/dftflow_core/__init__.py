@@ -1,5 +1,5 @@
-"""Public package entrypoint for pDFT."""
-"""Project package for pDFT."""
+"""Public package entrypoint for DFTFlow."""
+"""Project package for DFTFlow."""
 
 __all__ = [
     "run_opt",

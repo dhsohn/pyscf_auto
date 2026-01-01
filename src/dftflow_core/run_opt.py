@@ -1,4 +1,4 @@
-"""CLI entrypoint module for pDFT."""
+"""CLI entrypoint module for DFTFlow."""
 
 __all__ = ["main"]
 

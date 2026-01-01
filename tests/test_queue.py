@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from pdft_core.queue import load_queue
+from dftflow_core.queue import load_queue
 
 
 def test_load_queue_corrupt_with_backup(tmp_path: Path) -> None:

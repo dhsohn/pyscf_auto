@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pdft"
+name = "dftflow"
 version = "0.1.0"
 description = "Lightweight PySCF/ASE workflow for geometry optimization and analysis."
 readme = "README.md"
@@ -14,17 +14,17 @@ dependencies = ["jsonschema>=4.18"]
 dev = ["pytest", "ruff", "mypy"]
 
 [project.scripts]
-pdft = "pdft_core.run_opt:main"
+dftflow = "dftflow_core.run_opt:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
-pdft_core = ["solvent_dielectric.json"]
+dftflow_core = ["solvent_dielectric.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["pdft_core"]
+include = ["dftflow_core"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B"]

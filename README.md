@@ -3,7 +3,7 @@
 
 PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **구조 최적화(최소점/전이상태), 단일점(SP) 에너지, 프리퀀시(진동수) 분석**을 한 번에 실행하는 경량 워크플로우 스크립트입니다.
 
-- 엔트리포인트: `pdft` CLI (내부 구현은 `run_opt.py`, 모듈은 `pdft_core/` 패키지)
+- 엔트리포인트: `dftflow` CLI (내부 구현은 `run_opt.py`, 모듈은 `dftflow_core/` 패키지)
 - 기본 설정 템플릿: `run_config.json`
 - 출력은 실행 시점별로 `runs/YYYY-MM-DD_HHMMSS/` 아래에 자동으로 정리됩니다.
 
@@ -19,20 +19,20 @@ PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **�
 - **실험적 기능 확장**: 스캔/IRC/열화학 등 후속 분석을 같은 실행 컨텍스트에서 이어갈 수 있습니다.
 
 ### 실행 흐름(요약)
-1. **입력/설정 로딩**: `pdft_core/run_opt.py`가 CLI 인자를 해석하고, `pdft_core/run_opt_config.py`에서 JSON 설정을 로드/검증합니다.
+1. **입력/설정 로딩**: `dftflow_core/run_opt.py`가 CLI 인자를 해석하고, `dftflow_core/run_opt_config.py`에서 JSON 설정을 로드/검증합니다.
 2. **구조/전하/스핀 준비**: XYZ 파일과 메타데이터를 읽고, `charge`/`multiplicity`가 없으면 전자수 기반으로 추정합니다.
 3. **화학 계산 엔진 구성**: `run_opt_engine.py`가 PySCF 설정(기저, 함수, SCF 옵션, 용매 모델 등)을 적용합니다.
 4. **옵티마이저 선택/구동**:
    - 최소점: ASE(BFGS 등) + PySCF 그라디언트
    - TS: Sella 기반 1차 안장점 탐색(`order=1`)
 5. **후속 계산**: 선택 시 프리퀀시 계산 → 결과 검증(허수 진동수 확인) → SP 계산을 자동으로 연결합니다. TS일 경우 허수 모드 검증 및 IRC 옵션을 이어서 수행할 수 있습니다.
-6. **결과 정리/기록**: `pdft_core/run_opt_logging.py`와 `pdft_core/run_opt_metadata.py`가 실행 로그, 이벤트 로그, 설정 스냅샷, 결과 파일을 표준 디렉토리 구조로 정리합니다. 결과는 실행 단위로 분리된 디렉터리에 저장되어 병렬 실행/관리에도 유리합니다.
+6. **결과 정리/기록**: `dftflow_core/run_opt_logging.py`와 `dftflow_core/run_opt_metadata.py`가 실행 로그, 이벤트 로그, 설정 스냅샷, 결과 파일을 표준 디렉토리 구조로 정리합니다. 결과는 실행 단위로 분리된 디렉터리에 저장되어 병렬 실행/관리에도 유리합니다.
 
 ### 핵심 설계 포인트
-- **단일 엔트리포인트**: `pdft` 하나로 `run/doctor/validate-config/status/queue` 서브커맨드를 제공하며, 인터랙티브/비-인터랙티브 및 큐 실행까지 지원합니다. (내부 구현은 `pdft_core/` 패키지)
+- **단일 엔트리포인트**: `dftflow` 하나로 `run/doctor/validate-config/status/queue` 서브커맨드를 제공하며, 인터랙티브/비-인터랙티브 및 큐 실행까지 지원합니다. (내부 구현은 `dftflow_core/` 패키지)
 - **계산/설정 분리**: JSON 설정 템플릿을 통해 계산 조건을 재현 가능하게 유지합니다. 실행 시 사용된 설정은 `config_used.json`으로 저장되어 비교/재실행이 쉽습니다.
 - **분산/용매 모듈화**: 분산 보정(D3/D4)과 용매 모델(PCM/SMD)을 필요 시 활성화하는 구조입니다. XC 함수 자체에 분산이 포함된 경우에는 중복 적용을 방지합니다.
-- **진단/상태 유틸리티**: `pdft doctor`, `pdft status`, `pdft queue` 등으로 환경과 실행 상태를 빠르게 점검할 수 있습니다. 운영 중에도 문제 원인을 빠르게 식별하도록 로그/메타데이터가 표준화되어 있습니다.
+- **진단/상태 유틸리티**: `dftflow doctor`, `dftflow status`, `dftflow queue` 등으로 환경과 실행 상태를 빠르게 점검할 수 있습니다. 운영 중에도 문제 원인을 빠르게 식별하도록 로그/메타데이터가 표준화되어 있습니다.
 
 ### 결과물 구성(한 번의 실행 기준)
 - **실행 로그**: `run.log`, `log/run_events.jsonl`
@@ -56,7 +56,7 @@ PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **�
   - `model.method`/`model.basis`는 최종 SP/프리퀀시 계산 설정이 있으면 해당 값을, 없으면 기본 설정을 사용합니다.
   - `model.solvent`/`model.solvent_model`/`model.solvent_eps`는 계산에 사용된 용매 설정을 그대로 반영합니다.
 - **프로비넌스**
-  - `creator`는 `pDFT`, `version`은 설치된 `pdft` 패키지 버전을 사용합니다.
+  - `creator`는 `DFTFlow`, `version`은 설치된 `dftflow` 패키지 버전을 사용합니다.
   - `routine`에는 계산 모드, Python 버전, git commit 정보를 기록합니다.
   - `walltime`은 `summary.elapsed_seconds`, `hostname`은 실행 호스트명을 사용합니다.
 
@@ -125,19 +125,19 @@ python run_opt.py input.xyz \
 
 ### 6) 백그라운드 큐 & 상태/진단 유틸리티
 - `--background`로 큐에 넣어 **백그라운드 실행** 가능 (우선순위/타임아웃 지원). 긴 계산을 순차적으로 처리할 때 유용합니다.
-- `pdft queue status/cancel/retry/archive/prune` 등으로 **큐 상태 관리**를 수행합니다.
-- `pdft status <run_dir>` 및 `--recent`로 **실행 결과 요약 출력**(성공/실패/상태/핵심 파일).
-- `pdft doctor`, `pdft validate-config`로 **환경 진단/설정 검증**(의존성 누락/설정 오류 점검).
+- `dftflow queue status/cancel/retry/archive/prune` 등으로 **큐 상태 관리**를 수행합니다.
+- `dftflow status <run_dir>` 및 `--recent`로 **실행 결과 요약 출력**(성공/실패/상태/핵심 파일).
+- `dftflow doctor`, `dftflow validate-config`로 **환경 진단/설정 검증**(의존성 누락/설정 오류 점검).
 
 ---
 
 ## 디렉토리 구조(요약)
 
 ```
-pDFT/
+DFTFlow/
   run_opt.py                 # 메인 CLI/워크플로우(래퍼)
   src/
-    pdft_core/
+    dftflow_core/
       __init__.py
       run_opt.py               # 메인 CLI/워크플로우
       run_opt_engine.py         # PySCF 기반 SP/frequency/solvent 등 화학 로직
@@ -163,7 +163,7 @@ pDFT/
 #### 1) `environment.yml`로 기본 환경 구성
 ```bash
 conda env create -f environment.yml
-conda activate pDFT
+conda activate DFTFlow
 ```
 
 - `environment.yml`에는 **Python 3.12**, PySCF 빌드를 위한 툴체인/라이브러리, ASE, D3/D4 의존성이 포함되어 있습니다.
@@ -179,19 +179,19 @@ python -m pip install sella
 ```bash
 conda install -c conda-forge conda-lock -y
 conda-lock lock -f environment.yml -p linux-64
-conda-lock install --name pdft conda-lock.yml
+conda-lock install --name dftflow conda-lock.yml
 ```
 
 ```bash
 conda install -c conda-forge conda-lock -y
 conda-lock lock -f environment.yml -p osx-arm64
-conda-lock install --name pdft conda-lock.yml
+conda-lock install --name dftflow conda-lock.yml
 ```
 
 ```bash
 conda install -c conda-forge conda-lock -y
 conda-lock lock -f environment.yml -p win-64
-conda-lock install --name pdft conda-lock.yml
+conda-lock install --name dftflow conda-lock.yml
 ```
 
 #### 3) PySCF 소스 빌드
@@ -216,8 +216,8 @@ python -m pip install -e . --no-build-isolation
 프로젝트 루트에서 실행:
 
 ```bash
-conda activate pDFT
-cd pDFT
+conda activate DFTFlow
+cd DFTFlow
 python run_opt.py
 ```
 
@@ -306,10 +306,10 @@ python run_opt.py --resume runs/2024-01-01_120000 --force-resume
 - `--run-dir <dir>`: 출력 폴더를 직접 지정
 - `--run-id <uuid>`: run id를 고정
 - `--solvent-map <json>`: solvent dielectric map 경로 지정
-- `pdft validate-config [config.json]`: config 검증만 수행하고 종료
-- `pdft status <run_dir|metadata.json>`: 특정 실행의 상태 요약 출력
-- `pdft status --recent <N>`: 최근 N개 실행 요약 출력
-- `pdft doctor`: 환경 진단(의존성/solvent map 등) 후 종료
+- `dftflow validate-config [config.json]`: config 검증만 수행하고 종료
+- `dftflow status <run_dir|metadata.json>`: 특정 실행의 상태 요약 출력
+- `dftflow status --recent <N>`: 최근 N개 실행 요약 출력
+- `dftflow doctor`: 환경 진단(의존성/solvent map 등) 후 종료
 - `--scan-dimension`, `--scan-grid`, `--scan-mode`: 스캔 계산 전용 옵션
 
 ---
@@ -327,12 +327,12 @@ python run_opt.py input.xyz --config run_config.json --non-interactive --backgro
 
 ### 2) 큐 상태 확인/관리
 ```bash
-pdft queue status
-pdft queue cancel <RUN_ID>
-pdft queue retry <RUN_ID>
-pdft queue requeue-failed
-pdft queue archive [--path <archive.json>]
-pdft queue prune --keep-days 30
+dftflow queue status
+dftflow queue cancel <RUN_ID>
+dftflow queue retry <RUN_ID>
+dftflow queue requeue-failed
+dftflow queue archive [--path <archive.json>]
+dftflow queue prune --keep-days 30
 ```
 
 큐 파일은 `runs/queue.json`에 저장되며, 큐 러너 로그는 `log/queue_runner.log`에 기록됩니다.
@@ -343,12 +343,12 @@ pdft queue prune --keep-days 30
 
 ### 환경 진단
 ```bash
-pdft doctor
+dftflow doctor
 ```
 
 ### 설정 검증(단축 명령 지원)
 ```bash
-pdft validate-config run_config.json
+dftflow validate-config run_config.json
 ```
 
 > 하위 호환 플래그/alias: 기존 `--doctor`, `--validate-only`, `--status*`, `--queue-*` 플래그는 **하위 호환(alias)** 으로 유지되며, 신규 서브커맨드 사용을 기본으로 권장합니다.
@@ -370,19 +370,19 @@ pdft validate-config run_config.json
 - `--force-resume`: 완료/실패/타임아웃 run도 재개 허용합니다.
 
 ### 상태/진단
-- `pdft status <run_dir|metadata.json>`: 특정 실행 요약 출력.
-- `pdft status --recent <N>`: 최근 N개 실행 요약 출력.
-- `pdft doctor`: 의존성/환경 점검(설치 누락, solvent map 등).
-- `pdft validate-config [config.json]`: 설정 파일만 검증하고 종료합니다.
+- `dftflow status <run_dir|metadata.json>`: 특정 실행 요약 출력.
+- `dftflow status --recent <N>`: 최근 N개 실행 요약 출력.
+- `dftflow doctor`: 의존성/환경 점검(설치 누락, solvent map 등).
+- `dftflow validate-config [config.json]`: 설정 파일만 검증하고 종료합니다.
 
 ### 백그라운드 큐
 - `--background`: 큐에 등록해 백그라운드 실행.
-- `pdft queue status`: 큐/실행 상태를 요약 출력.
-- `pdft queue cancel <RUN_ID>`: 대기열 항목 취소.
-- `pdft queue retry <RUN_ID>`: 실패/타임아웃 항목 재시도.
-- `pdft queue requeue-failed`: 실패/타임아웃 항목 일괄 재등록.
-- `pdft queue archive [--path <archive.json>]`: 큐를 아카이브 파일로 저장 후 초기화.
-- `pdft queue prune --keep-days <N>`: 완료/실패/타임아웃/취소 항목 중 오래된 항목 정리.
+- `dftflow queue status`: 큐/실행 상태를 요약 출력.
+- `dftflow queue cancel <RUN_ID>`: 대기열 항목 취소.
+- `dftflow queue retry <RUN_ID>`: 실패/타임아웃 항목 재시도.
+- `dftflow queue requeue-failed`: 실패/타임아웃 항목 일괄 재등록.
+- `dftflow queue archive [--path <archive.json>]`: 큐를 아카이브 파일로 저장 후 초기화.
+- `dftflow queue prune --keep-days <N>`: 완료/실패/타임아웃/취소 항목 중 오래된 항목 정리.
 - `--queue-priority <int>`: 우선순위(높을수록 먼저 실행).
 - `--queue-max-runtime <sec>`: 최대 실행 시간(초).
 
@@ -403,7 +403,7 @@ pdft validate-config run_config.json
 
 실행:
 ```bash
-pdft validate-config run_config.json
+dftflow validate-config run_config.json
 ```
 
 필요한 파일:
@@ -450,7 +450,7 @@ python -m pytest tests
   - `schema_name`, `schema_version`: QCSchema 버전 정보
   - `molecule`: 입력 구조(원소/좌표/전하/다중도)
   - `return_result`: 최종 에너지(Hartree)
-  - `extras.pdft`: 계산 메타데이터와 stage 결과 스냅샷
+  - `extras.dftflow`: 계산 메타데이터와 stage 결과 스냅샷
 - `irc_profile.csv`: IRC 경로 에너지 프로파일 CSV
   - `direction`: forward/reverse 방향
   - `step`: 스텝 인덱스
@@ -561,7 +561,7 @@ python -m pytest tests
 
 ### 6) `FileNotFoundError: run_config.json` (테스트/검증 실행 시)
 - 원인: 저장소 루트가 아닌 다른 경로에서 실행
-- 해결: `cd pDFT` 후 실행하거나, 설정 파일 경로를 절대/상대 경로로 정확히 지정하세요.
+- 해결: `cd DFTFlow` 후 실행하거나, 설정 파일 경로를 절대/상대 경로로 정확히 지정하세요.
 
 ---
 
