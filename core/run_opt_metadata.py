@@ -227,3 +227,37 @@ def write_run_metadata(metadata_path, metadata):
             metadata_path,
             exc,
         )
+
+
+def write_checkpoint(checkpoint_path, checkpoint_payload):
+    try:
+        if checkpoint_payload is None:
+            return
+        ensure_parent_dir(checkpoint_path)
+        checkpoint_dir = os.path.dirname(checkpoint_path) or "."
+        temp_handle = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=checkpoint_dir,
+            prefix=".checkpoint.json.",
+            suffix=".tmp",
+            delete=False,
+        )
+        try:
+            with temp_handle as checkpoint_file:
+                json.dump(checkpoint_payload, checkpoint_file, indent=2, ensure_ascii=False)
+                checkpoint_file.flush()
+                os.fsync(checkpoint_file.fileno())
+            os.replace(temp_handle.name, checkpoint_path)
+        finally:
+            if os.path.exists(temp_handle.name):
+                try:
+                    os.remove(temp_handle.name)
+                except FileNotFoundError:
+                    pass
+    except Exception as exc:
+        logging.getLogger().error(
+            "Failed to write checkpoint to %s: %s",
+            checkpoint_path,
+            exc,
+        )

@@ -55,6 +55,7 @@ from .run_opt_metadata import (
     compute_text_hash,
     get_package_version,
     parse_single_point_cycle_count,
+    write_checkpoint,
     write_optimized_xyz,
     write_run_metadata,
 )
@@ -593,9 +594,8 @@ def prepare_run_context(args, config: RunConfig, config_raw):
             config_used_file.write(config_raw)
         args.config = config_used_path
 
+    checkpoint_path = resolve_run_path(run_dir, "checkpoint.json")
     if not resume_dir:
-        checkpoint_path = resolve_run_path(run_dir, "checkpoint.json")
-        ensure_parent_dir(checkpoint_path)
         checkpoint_payload = {
             "created_at": datetime.now().isoformat(),
             "run_dir": run_dir,
@@ -604,11 +604,7 @@ def prepare_run_context(args, config: RunConfig, config_raw):
             "config_source_path": str(args.config) if args.config else None,
             "config_raw": config_raw,
         }
-        try:
-            with open(checkpoint_path, "w", encoding="utf-8") as checkpoint_file:
-                json.dump(checkpoint_payload, checkpoint_file, indent=2, ensure_ascii=False)
-        except OSError as exc:
-            logging.warning("Failed to write checkpoint.json: %s", exc)
+        write_checkpoint(checkpoint_path, checkpoint_payload)
 
     run_id = args.run_id or str(uuid.uuid4())
     event_log_path = resolve_run_path(
@@ -654,6 +650,7 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         "irc_enabled": irc_enabled,
         "irc_config": irc_config,
         "previous_status": getattr(args, "resume_previous_status", None),
+        "checkpoint_path": checkpoint_path,
     }
 
 
@@ -1403,6 +1400,7 @@ def run_optimization_stage(
     run_id = context["run_id"]
     irc_enabled = context["irc_enabled"]
     irc_config = context["irc_config"]
+    checkpoint_path = context["checkpoint_path"]
     mol = molecule_context["mol"]
     mf = molecule_context["mf"]
     charge = molecule_context["charge"]
@@ -1601,6 +1599,64 @@ def run_optimization_stage(
         "time": time.monotonic(),
         "step": 0,
     }
+    checkpoint_base = {}
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        try:
+            with open(checkpoint_path, "r", encoding="utf-8") as checkpoint_file:
+                checkpoint_base = json.load(checkpoint_file)
+        except (OSError, json.JSONDecodeError):
+            checkpoint_base = {}
+
+    optimizer_name = (optimizer_ase_dict.get("optimizer") or "").lower()
+    if not optimizer_name:
+        optimizer_name = "sella" if optimizer_mode == "transition_state" else "bfgs"
+    optimizer_fmax = optimizer_ase_dict.get("fmax", 0.05)
+    optimizer_steps = optimizer_ase_dict.get("steps", 200)
+
+    input_xyz_name = os.path.basename(args.xyz_file) if args.xyz_file else None
+    input_xyz_path = (
+        resolve_run_path(run_dir, input_xyz_name) if input_xyz_name else None
+    )
+    output_xyz_setting = (
+        optimizer_config.output_xyz if optimizer_config else None
+    ) or "ase_optimized.xyz"
+    output_xyz_path = resolve_run_path(run_dir, output_xyz_setting)
+    pyscf_chkfile = None
+    if scf_config and scf_config.get("chkfile"):
+        pyscf_chkfile = resolve_run_path(run_dir, scf_config.get("chkfile"))
+
+    def _write_checkpoint(
+        atoms=None,
+        atom_spec=None,
+        step=None,
+        status=None,
+        error_message=None,
+    ):
+        checkpoint_payload = dict(checkpoint_base)
+        if atom_spec is not None:
+            checkpoint_payload["last_geometry"] = atom_spec
+        elif atoms is not None:
+            checkpoint_payload["last_geometry"] = _atoms_to_atom_spec(atoms)
+        if step is not None:
+            checkpoint_payload["last_step"] = step
+        checkpoint_payload.update(
+            {
+                "optimizer": optimizer_name,
+                "fmax": optimizer_fmax,
+                "steps": optimizer_steps,
+                "run_dir": run_dir,
+                "calculation_mode": context.get("calculation_mode", "optimization"),
+                "timestamp": datetime.now().isoformat(),
+                "input_xyz": input_xyz_path,
+                "output_xyz": output_xyz_path,
+                "pyscf_chkfile": pyscf_chkfile,
+            }
+        )
+        if status is not None:
+            checkpoint_payload["status"] = status
+        if error_message is not None:
+            checkpoint_payload["error"] = error_message
+        write_checkpoint(checkpoint_path, checkpoint_payload)
 
     def _step_callback(*_args, **_kwargs):
         n_steps["value"] += 1
@@ -1610,23 +1666,21 @@ def run_optimization_stage(
             now - last_metadata_write["time"] >= 5.0
         )
         if should_write:
+            optimizer = _args[0] if _args else None
+            atoms = getattr(optimizer, "atoms", None) if optimizer is not None else None
             optimization_metadata["n_steps"] = step_value
             optimization_metadata["n_steps_source"] = "ase"
             optimization_metadata["status"] = "running"
             optimization_metadata["run_updated_at"] = datetime.now().isoformat()
             write_run_metadata(run_metadata_path, optimization_metadata)
+            _write_checkpoint(atoms=atoms, step=step_value, status="running")
             last_metadata_write["time"] = now
             last_metadata_write["step"] = step_value
 
     try:
-        input_xyz_name = os.path.basename(args.xyz_file)
-        input_xyz_path = resolve_run_path(run_dir, input_xyz_name)
-        if os.path.abspath(args.xyz_file) != os.path.abspath(input_xyz_path):
-            shutil.copy2(args.xyz_file, input_xyz_path)
-        output_xyz_setting = (
-            optimizer_config.output_xyz if optimizer_config else None
-        ) or "ase_optimized.xyz"
-        output_xyz_path = resolve_run_path(run_dir, output_xyz_setting)
+        if args.xyz_file and input_xyz_path:
+            if os.path.abspath(args.xyz_file) != os.path.abspath(input_xyz_path):
+                shutil.copy2(args.xyz_file, input_xyz_path)
         ensure_parent_dir(output_xyz_path)
         n_steps_value = _run_ase_optimizer(
             input_xyz_path,
@@ -1664,6 +1718,7 @@ def run_optimization_stage(
     except Exception as exc:
         logging.exception("Geometry optimization failed.")
         n_steps_value = n_steps["value"] if n_steps_source else None
+        _write_checkpoint(status="failed", error_message=str(exc))
         optimization_metadata["status"] = "failed"
         optimization_metadata["run_ended_at"] = datetime.now().isoformat()
         optimization_metadata["error"] = str(exc)
@@ -1705,6 +1760,11 @@ def run_optimization_stage(
     final_sp_cycles = None
     optimization_metadata["status"] = "completed"
     optimization_metadata["run_ended_at"] = datetime.now().isoformat()
+        _write_checkpoint(
+            atom_spec=optimized_atom_spec,
+            step=n_steps_value,
+            status="completed",
+        )
     elapsed_seconds = time.perf_counter() - run_start
     n_steps_value = n_steps["value"] if n_steps_source else None
     imaginary_count = None
