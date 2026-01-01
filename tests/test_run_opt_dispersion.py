@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from core import run_opt_dispersion
+from pdft_core import run_opt_dispersion
 
 
 @pytest.mark.parametrize(

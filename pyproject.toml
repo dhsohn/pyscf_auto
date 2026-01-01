@@ -14,13 +14,17 @@ dependencies = ["jsonschema>=4.18"]
 dev = ["pytest", "ruff"]
 
 [project.scripts]
-pdft = "core.run_opt:main"
+pdft = "pdft_core.run_opt:main"
 
 [tool.setuptools]
-packages = ["core"]
+package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
-core = ["solvent_dielectric.json"]
+pdft_core = ["solvent_dielectric.json"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pdft_core"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B"]
@@ -32,4 +36,4 @@ docstring-code-line-length = 100
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["pyscf"]
-pythonpath = ["."]
+pythonpath = ["src"]

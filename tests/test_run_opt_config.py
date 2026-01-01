@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from core.run_opt_config import load_run_config, validate_run_config
+from pdft_core.run_opt_config import load_run_config, validate_run_config
 
 
 @pytest.mark.parametrize("config_path", ["run_config.json"])
