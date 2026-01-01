@@ -26,6 +26,7 @@ XC_FUNCTIONAL_OPTIONS = [
     "b97-d",
 ]
 SOLVENT_MODEL_OPTIONS = ["pcm", "smd", "none (vacuum)"]
+DISPERSION_MODEL_OPTIONS = ["none (사용 안 함)", "d3bj", "d3zero", "d4"]
 CALCULATION_MODE_OPTIONS = [
     "구조 최적화",
     "단일점 에너지 계산",
@@ -81,6 +82,20 @@ def _prompt_yes_no(prompt, default=True):
         if response in ("n", "no"):
             return False
         print("y 또는 n으로 입력하세요.")
+
+
+def _prompt_dispersion(stage_label, default_value=None):
+    default_label = (
+        DISPERSION_MODEL_OPTIONS[0] if default_value is None else default_value
+    )
+    choice = _prompt_choice(
+        f"{stage_label} dispersion 보정을 선택하세요:",
+        DISPERSION_MODEL_OPTIONS,
+        default_value=default_label,
+    )
+    if choice.strip().lower().startswith("none"):
+        return None
+    return choice
 
 
 def _prompt_int_list(prompt, count):
@@ -256,6 +271,16 @@ def _prompt_interactive_config(args):
         default_value=config.get("xc"),
     )
     xc = normalize_xc_functional(xc)
+    base_dispersion = None
+    if calculation_mode in ("optimization", "single_point", "frequency"):
+        base_dispersion = _prompt_dispersion(
+            {
+                "optimization": "구조 최적화",
+                "single_point": "단일점 계산",
+                "frequency": "프리퀀시 계산",
+            }[calculation_mode],
+            config.get("dispersion"),
+        )
     solvent_model = _prompt_choice(
         "용매 모델을 선택하세요:",
         SOLVENT_MODEL_OPTIONS,
@@ -298,6 +323,11 @@ def _prompt_interactive_config(args):
                 default=True,
             )
         if single_point_enabled:
+            sp_dispersion_default = (
+                single_point_config.get("dispersion")
+                if "dispersion" in single_point_config
+                else base_dispersion
+            )
             sp_basis = _prompt_choice(
                 "단일점 계산용 basis set을 선택하세요:",
                 BASIS_SET_OPTIONS,
@@ -316,6 +346,10 @@ def _prompt_interactive_config(args):
                 SOLVENT_MODEL_OPTIONS,
                 allow_custom=True,
                 default_value=solvent_model,
+            )
+            sp_dispersion = _prompt_dispersion(
+                "단일점 계산",
+                sp_dispersion_default,
             )
             if isinstance(sp_solvent_model, str) and sp_solvent_model.lower() in (
                 "none",
@@ -341,11 +375,47 @@ def _prompt_interactive_config(args):
             single_point_config["xc"] = sp_xc
             single_point_config["solvent_model"] = sp_solvent_model
             single_point_config["solvent"] = sp_solvent
+            single_point_config["dispersion"] = sp_dispersion
+        if frequency_enabled:
+            frequency_config = dict(config.get("frequency") or {})
+            if "dispersion_model" in frequency_config:
+                freq_dispersion_default = frequency_config.get("dispersion_model")
+            else:
+                freq_dispersion_default = (
+                    sp_dispersion if single_point_enabled else base_dispersion
+                )
+            freq_dispersion = _prompt_dispersion(
+                "프리퀀시 계산",
+                freq_dispersion_default,
+            )
+            frequency_config["dispersion_model"] = freq_dispersion
+            config["frequency"] = frequency_config
+    if calculation_mode == "single_point":
+        sp_dispersion = _prompt_dispersion(
+            "단일점 계산",
+            single_point_config.get("dispersion", base_dispersion),
+        )
+        single_point_config = dict(single_point_config)
+        single_point_config["dispersion"] = sp_dispersion
+    if calculation_mode == "frequency":
+        frequency_config = dict(config.get("frequency") or {})
+        if "dispersion_model" in frequency_config:
+            freq_dispersion_default = frequency_config.get("dispersion_model")
+        else:
+            freq_dispersion_default = base_dispersion
+        freq_dispersion = _prompt_dispersion(
+            "프리퀀시 계산",
+            freq_dispersion_default,
+        )
+        frequency_config["dispersion_model"] = freq_dispersion
+        config["frequency"] = frequency_config
 
     config = json.loads(json.dumps(config))
     config["calculation_mode"] = calculation_mode
     config["basis"] = basis
     config["xc"] = xc
+    if calculation_mode in ("optimization", "single_point", "frequency"):
+        config["dispersion"] = base_dispersion
     config["solvent_model"] = solvent_model
     config["solvent"] = solvent
     config["frequency_enabled"] = frequency_enabled
