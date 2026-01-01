@@ -127,7 +127,8 @@ pDFT/
 지원 Python 버전: **3.12**
 
 ### 권장: Conda 환경
-가장 일반적인 흐름은 “conda로 과학계 스택 설치 + (필요 시) PySCF를 SMD 옵션으로 빌드”입니다.
+기본 경로는 “conda로 과학계 스택 설치 + PySCF를 **소스 빌드**”입니다.
+**SMD를 사용하지 않는 빠른설치(바이너리/기본 패키지 설치)는 권장하지 않습니다.**
 
 #### 1) `environment.yml`로 기본 환경 구성
 ```bash
@@ -163,7 +164,10 @@ conda-lock lock -f environment.yml -p win-64
 conda-lock install --name pdft conda-lock.yml
 ```
 
-#### 3) PySCF 빌드
+#### 3) PySCF 소스 빌드(기본 경로, ENABLE_SMD 포함/불포함 선택)
+기본적으로 소스 빌드를 사용하며, `ENABLE_SMD` 옵션으로 SMD 포함 여부를 선택합니다.
+
+##### SMD 포함 빌드(권장)
 ```bash
 git clone https://github.com/pyscf/pyscf.git
 cd pyscf
@@ -171,6 +175,21 @@ cd pyscf
 mkdir -p build
 cmake -S pyscf/lib -B build \
   -DENABLE_SMD=ON \
+  -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
+cmake --build build -j4
+
+python -m pip install -e . --no-build-isolation
+```
+
+##### SMD 미포함 빌드(비권장)
+SMD를 사용하지 않더라도, 소스 빌드를 통해 의존성 호환성을 유지하는 것을 권장합니다.
+```bash
+git clone https://github.com/pyscf/pyscf.git
+cd pyscf
+
+mkdir -p build
+cmake -S pyscf/lib -B build \
+  -DENABLE_SMD=OFF \
   -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
 cmake --build build -j4
 
