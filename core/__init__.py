@@ -1,3 +1,4 @@
+"""Public package entrypoint for pDFT."""
 """Project package for pDFT."""
 
 __all__ = [
