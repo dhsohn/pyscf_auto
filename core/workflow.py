@@ -308,7 +308,7 @@ def _dimension_key(dimension):
 
 
 def _apply_scan_geometry(atoms, dimensions, values):
-    for dimension, value in zip(dimensions, values):
+    for dimension, value in zip(dimensions, values, strict=True):
         dimension_type = dimension["type"]
         indices = dimension["indices"]
         if dimension_type == "bond":
@@ -324,7 +324,7 @@ def _atoms_to_atom_spec(atoms):
     symbols = atoms.get_chemical_symbols()
     positions = atoms.get_positions()
     lines = []
-    for symbol, position in zip(symbols, positions):
+    for symbol, position in zip(symbols, positions, strict=True):
         lines.append(
             "{symbol} {x:.10f} {y:.10f} {z:.10f}".format(
                 symbol=symbol, x=position[0], y=position[1], z=position[2]
@@ -335,7 +335,7 @@ def _atoms_to_atom_spec(atoms):
 
 def _build_scan_constraints(dimensions, values):
     constraints = {}
-    for dimension, value in zip(dimensions, values):
+    for dimension, value in zip(dimensions, values, strict=True):
         dim_type = dimension["type"]
         if dim_type == "bond":
             constraints.setdefault("bonds", []).append(
@@ -1226,7 +1226,7 @@ def run_scan_stage(
     try:
         for index, values in enumerate(scan_points):
             point_label = {"index": index}
-            for dimension, value in zip(dimensions, values):
+            for dimension, value in zip(dimensions, values, strict=True):
                 point_label[_dimension_key(dimension)] = value
             atoms = base_atoms.copy()
             _apply_scan_geometry(atoms, dimensions, values)

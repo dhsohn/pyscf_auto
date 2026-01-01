@@ -43,7 +43,7 @@ def _parse_scan_dimension(spec):
     except ValueError as exc:
         raise ValueError("Scan dimension start/end/step must be numbers.") from exc
     dimension = {"type": dim_type, "start": start, "end": end, "step": step}
-    for key, value in zip(("i", "j", "k", "l"), indices):
+    for key, value in zip(("i", "j", "k", "l"), indices, strict=False):
         dimension[key] = value
     return dimension
 

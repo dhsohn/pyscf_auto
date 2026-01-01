@@ -125,7 +125,7 @@ def _prompt_scan_dimension():
     end = _prompt_float("종료값(end)을 입력하세요")
     step = _prompt_float("스텝(step)을 입력하세요")
     dimension = {"type": scan_type, "start": start, "end": end, "step": step}
-    for key, value in zip(("i", "j", "k", "l"), indices):
+    for key, value in zip(("i", "j", "k", "l"), indices, strict=False):
         dimension[key] = value
     return dimension
 
