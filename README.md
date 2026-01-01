@@ -69,6 +69,7 @@ PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **�
 - **지원 타입**: `bond`, `angle`, `dihedral` (입력은 원자 인덱스 기준)
 - **실행 모드**: `optimization` 또는 `single_point`
 - **입력 방식**: `--scan-dimension`, `--scan-grid`, `--scan-mode`로 CLI에서 간단히 지정
+- **CLI 우선 규칙**: 설정 파일/인터랙티브 입력에 `scan`이 있어도, CLI로 지정한 차원/그리드/모드가 우선 적용됩니다(나머지 `scan` 키는 유지).
 - **그리드 방식**:
   - 범위 기반: `start,end,step`로 균일 간격 스캔
   - 명시적 리스트: `--scan-grid`로 임의의 값 목록 지정

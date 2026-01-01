@@ -124,10 +124,12 @@ def _apply_scan_cli_overrides(config, args):
     if len(dimensions) not in (1, 2):
         raise ValueError("Scan mode currently supports 1D or 2D dimensions only.")
     scan_config = {}
-    if len(dimensions) == 1:
-        scan_config = dimensions[0]
-    else:
-        scan_config["dimensions"] = dimensions
+    base_scan = config.get("scan")
+    if isinstance(base_scan, dict):
+        scan_config.update(base_scan)
+    for key in ("type", "i", "j", "k", "l", "start", "end", "step", "dimensions"):
+        scan_config.pop(key, None)
+    scan_config["dimensions"] = dimensions
     if args.scan_grid:
         if len(args.scan_grid) != len(dimensions):
             raise ValueError("--scan-grid entries must match scan dimension count.")
@@ -141,10 +143,17 @@ def _apply_scan_cli_overrides(config, args):
             except ValueError as exc:
                 raise ValueError("--scan-grid values must be numbers.") from exc
         scan_config["grid"] = grid
+    else:
+        existing_grid = base_scan.get("grid") if isinstance(base_scan, dict) else None
+        if isinstance(existing_grid, list) and len(existing_grid) == len(dimensions):
+            scan_config["grid"] = existing_grid
+        else:
+            scan_config.pop("grid", None)
     if args.scan_mode:
         scan_config["mode"] = args.scan_mode
     config = dict(config)
     config["scan"] = scan_config
+    config.pop("scan2d", None)
     config["calculation_mode"] = "scan"
     return config
 
@@ -301,8 +310,6 @@ def main():
             args.config = str(config_path)
             config_source_path = config_path
         if args.scan_dimension or args.scan_grid or args.scan_mode:
-            if args.interactive:
-                raise ValueError("--scan-* options cannot be used with --interactive.")
             config = _apply_scan_cli_overrides(config, args)
             config_raw = json.dumps(config, indent=2, ensure_ascii=False)
         if args.scan_result_csv:
