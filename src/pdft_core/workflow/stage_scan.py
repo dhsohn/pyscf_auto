@@ -1,3 +1,4 @@
+import csv
 import itertools
 import json
 import logging
@@ -52,6 +53,7 @@ def run_scan_stage(
     log_path = context["log_path"]
     run_metadata_path = context["run_metadata_path"]
     scan_result_path = context["scan_result_path"]
+    scan_result_csv_path = context["scan_result_csv_path"]
     event_log_path = context["event_log_path"]
     run_id = context["run_id"]
     charge = molecule_context["charge"]
@@ -105,6 +107,7 @@ def run_scan_stage(
             "total_points": len(scan_points),
         },
         "scan_result_file": scan_result_path,
+        "scan_result_csv_file": scan_result_csv_path,
         "calculation_mode": "scan",
         "charge": charge,
         "spin": spin,
@@ -169,6 +172,8 @@ def run_scan_stage(
         logging.info("Log file: %s", log_path)
     if scan_result_path:
         logging.info("Scan results file: %s", scan_result_path)
+    if scan_result_csv_path:
+        logging.info("Scan results CSV file: %s", scan_result_csv_path)
 
     run_start = time.perf_counter()
     base_atoms = ase_read(args.xyz_file)
@@ -253,6 +258,44 @@ def run_scan_stage(
             results.append(point_result)
             with open(scan_result_path, "w", encoding="utf-8") as handle:
                 json.dump({"results": results}, handle, indent=2)
+            if scan_result_csv_path:
+                value_key_map = {}
+                for item in results:
+                    values = item.get("values") or {}
+                    for key in values:
+                        if key == "index":
+                            continue
+                        normalized_key = key.replace(":", "_").replace(",", "_")
+                        value_key_map.setdefault(normalized_key, key)
+                fieldnames = [
+                    "index",
+                    *value_key_map.keys(),
+                    "energy",
+                    "converged",
+                    "cycles",
+                    "optimizer_steps",
+                    "input_xyz",
+                    "output_xyz",
+                ]
+                with open(scan_result_csv_path, "w", encoding="utf-8", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                    writer.writeheader()
+                    for item in results:
+                        values = item.get("values") or {}
+                        row = {"index": item.get("index")}
+                        for normalized_key, original_key in value_key_map.items():
+                            row[normalized_key] = values.get(original_key)
+                        row.update(
+                            {
+                                "energy": item.get("energy"),
+                                "converged": item.get("converged"),
+                                "cycles": item.get("cycles"),
+                                "optimizer_steps": item.get("optimizer_steps"),
+                                "input_xyz": item.get("input_xyz"),
+                                "output_xyz": item.get("output_xyz"),
+                            }
+                        )
+                        writer.writerow(row)
             scan_summary["scan"]["completed_points"] = len(results)
             scan_summary["run_updated_at"] = datetime.now().isoformat()
             write_run_metadata(run_metadata_path, scan_summary)

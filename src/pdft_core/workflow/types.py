@@ -32,6 +32,7 @@ class RunContext(TypedDict):
     frequency_output_path: str
     irc_output_path: str
     scan_result_path: str
+    scan_result_csv_path: str
     event_log_path: str | None
     run_id: str
     attempt: int

@@ -166,6 +166,10 @@ def build_parser():
             "(comma-separated, provide once per dimension)."
         ),
     )
+    parser.add_argument(
+        "--scan-result-csv",
+        help="Optional CSV output path for scan results (default: scan_result.csv).",
+    )
     parser.add_argument("--no-background", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--queue-runner", action="store_true", help=argparse.SUPPRESS)
     return parser

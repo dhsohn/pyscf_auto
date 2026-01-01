@@ -21,6 +21,7 @@ DEFAULT_FREQUENCY_PATH = "frequency_result.json"
 DEFAULT_IRC_PATH = "irc_result.json"
 DEFAULT_RUN_METADATA_PATH = "metadata.json"
 DEFAULT_SCAN_RESULT_PATH = "scan_result.json"
+DEFAULT_SCAN_RESULT_CSV_PATH = "scan_result.csv"
 DEFAULT_QUEUE_PATH = "runs/queue.json"
 DEFAULT_QUEUE_LOCK_PATH = "runs/queue.lock"
 DEFAULT_QUEUE_RUNNER_LOCK_PATH = "runs/queue.runner.lock"
@@ -62,6 +63,7 @@ RUN_CONFIG_SCHEMA = {
         },
         "irc_enabled": {"type": ["boolean", "null"]},
         "irc_file": {"type": ["string", "null"]},
+        "scan_result_csv_file": {"type": ["string", "null"]},
         "irc": {
             "type": ["object", "null"],
             "required": [],
@@ -550,6 +552,7 @@ class RunConfig:
     run_metadata_file: str | None = None
     frequency_file: str | None = None
     irc_file: str | None = None
+    scan_result_csv_file: str | None = None
     solvent_map: str | None = None
     optimizer: OptimizerConfig | None = None
     scf: SCFConfig | None = None
@@ -589,6 +592,7 @@ class RunConfig:
             run_metadata_file=data.get("run_metadata_file"),
             frequency_file=data.get("frequency_file"),
             irc_file=data.get("irc_file"),
+            scan_result_csv_file=data.get("scan_result_csv_file"),
             solvent_map=data.get("solvent_map"),
             optimizer=OptimizerConfig.from_dict(data.get("optimizer")),
             scf=SCFConfig.from_dict(data.get("scf")),
@@ -934,6 +938,7 @@ def validate_run_config(config):
         "run_metadata_file": (is_str, "Config '{name}' must be a string path."),
         "frequency_file": (is_str, "Config '{name}' must be a string path."),
         "irc_file": (is_str, "Config '{name}' must be a string path."),
+        "scan_result_csv_file": (is_str, "Config '{name}' must be a string path."),
         "basis": (is_str, "Config '{name}' must be a string."),
         "xc": (is_str, "Config '{name}' must be a string."),
         "solvent": (is_str, "Config '{name}' must be a string."),

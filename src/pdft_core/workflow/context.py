@@ -10,6 +10,7 @@ from ..run_opt_config import (
     DEFAULT_LOG_PATH,
     DEFAULT_OPTIMIZED_XYZ_PATH,
     DEFAULT_RUN_METADATA_PATH,
+    DEFAULT_SCAN_RESULT_CSV_PATH,
     DEFAULT_SCAN_RESULT_PATH,
     DEFAULT_SOLVENT_MAP_PATH,
     DEFAULT_THREAD_COUNT,
@@ -113,12 +114,16 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     )
     irc_output_path = resolve_run_path(run_dir, config.irc_file or DEFAULT_IRC_PATH)
     scan_result_path = resolve_run_path(run_dir, DEFAULT_SCAN_RESULT_PATH)
+    scan_result_csv_path = resolve_run_path(
+        run_dir, config.scan_result_csv_file or DEFAULT_SCAN_RESULT_CSV_PATH
+    )
     ensure_parent_dir(log_path)
     ensure_parent_dir(optimized_xyz_path)
     ensure_parent_dir(run_metadata_path)
     ensure_parent_dir(frequency_output_path)
     ensure_parent_dir(irc_output_path)
     ensure_parent_dir(scan_result_path)
+    ensure_parent_dir(scan_result_csv_path)
 
     if args.interactive:
         config_used_path = resolve_run_path(run_dir, "config_used.json")
@@ -203,6 +208,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
         "frequency_output_path": frequency_output_path,
         "irc_output_path": irc_output_path,
         "scan_result_path": scan_result_path,
+        "scan_result_csv_path": scan_result_csv_path,
         "event_log_path": event_log_path,
         "run_id": run_id,
         "attempt": attempt,

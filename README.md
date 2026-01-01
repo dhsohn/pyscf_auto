@@ -408,6 +408,16 @@ python -m pytest tests
 - `frequency_result.json`: 프리퀀시 결과(실행한 경우)
 - `irc_result.json`: IRC 결과(IRC 모드 또는 IRC 후속 계산 실행 시)
 - `irc_forward.xyz`, `irc_reverse.xyz`: IRC 경로 구조(ASE 출력)
+- `scan_result.json`: 스캔 결과(JSON, 스캔 모드에서 생성)
+- `scan_result.csv`: 스캔 결과 CSV(스캔 모드에서 생성)
+  - `index`: 스캔 포인트 인덱스
+  - `values.*`: 스캔 차원별 값(예: `bond_0_1`)
+  - `energy`: 단일점 에너지
+  - `converged`: 수렴 여부
+  - `cycles`: SCF 사이클 수
+  - `optimizer_steps`: 최적화 스텝 수(optimization 모드)
+  - `input_xyz`: 입력 구조 파일 경로
+  - `output_xyz`: 최적화 결과 구조 파일 경로(optimization 모드)
 
 ---
 

@@ -272,6 +272,10 @@ def main():
                 raise ValueError("--scan-* options cannot be used with --interactive.")
             config = _apply_scan_cli_overrides(config, args)
             config_raw = json.dumps(config, indent=2, ensure_ascii=False)
+        if args.scan_result_csv:
+            config = dict(config)
+            config["scan_result_csv_file"] = args.scan_result_csv
+            config_raw = json.dumps(config, indent=2, ensure_ascii=False)
 
         try:
             config = build_run_config(config)
