@@ -26,38 +26,59 @@ def _evaluate_openmp_availability(requested_threads, effective_threads):
     return True
 
 
-def inspect_thread_settings(requested_threads=None):
-    environment = {env_name: os.environ.get(env_name) for env_name in THREAD_ENV_VARS}
-    inferred_request = requested_threads
-    if inferred_request is None:
-        for env_value in environment.values():
-            if not env_value:
-                continue
-            try:
-                inferred_request = int(env_value)
-            except ValueError:
-                continue
-            else:
-                break
-    status = {
-        "requested": inferred_request,
-        "effective_threads": None,
-        "openmp_available": None,
-        "environment": environment,
-    }
+def _collect_thread_env():
+    return {env_name: os.environ.get(env_name) for env_name in THREAD_ENV_VARS}
+
+
+def _infer_requested_threads(requested_threads, environment):
+    if requested_threads is not None:
+        return requested_threads
+    for env_value in environment.values():
+        if not env_value:
+            continue
+        try:
+            return int(env_value)
+        except ValueError:
+            continue
+    return None
+
+
+def _load_pyscf_lib():
     pyscf_lib_spec = importlib.util.find_spec("pyscf.lib")
     if pyscf_lib_spec is None:
-        return status
+        return None
     pyscf_lib = importlib.import_module("pyscf.lib")
     if not hasattr(pyscf_lib, "num_threads"):
-        return status
-    effective_threads = pyscf_lib.num_threads()
-    status["effective_threads"] = effective_threads
-    status["openmp_available"] = _evaluate_openmp_availability(
-        inferred_request,
-        effective_threads,
-    )
+        return None
+    return pyscf_lib
+
+
+def _get_effective_threads():
+    pyscf_lib = _load_pyscf_lib()
+    if pyscf_lib is None:
+        return None
+    return pyscf_lib.num_threads()
+
+
+def _collect_threading_snapshot(requested_threads=None, include_env=False):
+    environment = _collect_thread_env()
+    inferred_request = _infer_requested_threads(requested_threads, environment)
+    effective_threads = _get_effective_threads()
+    status = {
+        "requested": inferred_request,
+        "effective_threads": effective_threads,
+        "openmp_available": _evaluate_openmp_availability(
+            inferred_request,
+            effective_threads,
+        ),
+    }
+    if include_env:
+        status["env"] = environment
     return status
+
+
+def inspect_thread_settings(requested_threads=None):
+    return _collect_threading_snapshot(requested_threads, include_env=True)
 
 
 def apply_thread_settings(thread_count):
@@ -71,11 +92,8 @@ def apply_thread_settings(thread_count):
     thread_value = str(thread_count)
     for env_name in THREAD_ENV_VARS:
         os.environ[env_name] = thread_value
-    pyscf_lib_spec = importlib.util.find_spec("pyscf.lib")
-    if pyscf_lib_spec is None:
-        return status
-    pyscf_lib = importlib.import_module("pyscf.lib")
-    if not hasattr(pyscf_lib, "num_threads"):
+    pyscf_lib = _load_pyscf_lib()
+    if pyscf_lib is None:
         return status
     pyscf_lib.num_threads(thread_count)
     effective_threads = pyscf_lib.num_threads()
@@ -216,15 +234,18 @@ def collect_environment_snapshot(thread_count):
         "name": _extract_conda_environment_name(),
         "list_export_sha256": _calculate_conda_list_export_sha256(),
     }
+    threading_snapshot = _collect_threading_snapshot(thread_count, include_env=True)
     return {
         "python_version": sys.version,
-        "platform": platform.platform(),
-        "system": platform.system(),
-        "release": platform.release(),
-        "version": platform.version(),
-        "machine": platform.machine(),
-        "processor": platform.processor(),
-        "cpu_count": os.cpu_count(),
-        "thread_count": thread_count,
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "version": platform.version(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+            "platform_string": platform.platform(),
+        },
+        "cpu": {"count": os.cpu_count()},
+        "threading": threading_snapshot,
         "conda": conda_snapshot,
     }
