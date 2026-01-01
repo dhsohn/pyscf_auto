@@ -436,6 +436,25 @@ python -m pytest tests
 - `solvent`, `solvent_model`, `solvent_map`: 용매 설정
 - `scf`: PySCF SCF 설정
   - `max_cycle`, `conv_tol`, `diis`, `level_shift`, `damping`
+  - `extra`: 세부 옵션(그리드/DF/초기 추정 등)
+    - `grids.level`, `grids.prune`: DFT 그리드 설정
+    - `density_fit`: `true|false` (밀도피팅, 지원 SCF 타입에서만 동작)
+    - `init_guess`: PySCF `init_guess` 문자열(예: `"atom"`, `"minao"`)
+
+예: `scf.extra` 사용
+```json
+"scf": {
+  "max_cycle": 200,
+  "extra": {
+    "grids": {
+      "level": 4,
+      "prune": "sg1"
+    },
+    "density_fit": true,
+    "init_guess": "atom"
+  }
+}
+```
 
 ### 구조 최적화
 - `optimizer.output_xyz`: 최종 구조 저장 파일명
@@ -455,6 +474,15 @@ python -m pytest tests
 - `irc_file`: IRC 결과 파일 경로(기본값: `irc_result.json`)
 - `irc_profile_csv_file`: IRC 프로파일 CSV 경로(기본값: `irc_profile.csv`)
 - `irc.steps`, `irc.step_size`, `irc.force_threshold`: IRC 경로 추적 설정
+
+### SCF `extra` 정책/제약
+- `density_fit` 지원 범위:
+  - PySCF에서 `density_fit()` 메서드를 제공하는 mean-field 객체에서만 동작합니다.
+  - 일반적으로 DFT(RKS/UKS/ROKS 등)에서 지원되며, 지원하지 않는 SCF 타입에서는 오류를 반환합니다.
+- `init_guess` vs `chkfile` 우선순위:
+  1. `scf.chkfile`이 존재하고 `scf/dm`이 저장되어 있으면 **chkfile의 density matrix가 최우선**으로 사용되며 `init_guess`는 무시됩니다.
+  2. `chkfile`이 존재하지만 `scf/dm`이 없으면, `init_guess`가 없을 때만 `init_guess="chkfile"`로 자동 설정됩니다. (사용자 `init_guess`가 있으면 그대로 유지)
+  3. `chkfile`이 없거나 경로가 비어 있으면 `init_guess` 설정만 적용됩니다.
 
 ### 열화학(thermochemistry) 관련
 - `thermo.T`, `thermo.P`, `thermo.unit`: 온도/압력 설정(예: `"atm"`, `"bar"`, `"Pa"`)
