@@ -133,33 +133,32 @@ pDFT/
 ### 권장: Conda 환경
 가장 일반적인 흐름은 “conda로 과학계 스택 설치 + (필요 시) PySCF를 SMD 옵션으로 빌드”입니다.
 
-#### 1) 필수 패키지 설치(최소 기능)
+#### 1) `environment.yml`로 기본 환경 구성
 ```bash
-conda create -n DFT python=3.12 -y
-conda activate DFT
-
-conda install -c conda-forge \
-  git make cmake ninja \
-  openblas gcc clang llvm-openmp \
-  libxc xcfun libcint toml \
-  h5py scipy numpy compilers \
-  ase dftd3-python dftd4 \
-  -y
-
-python -m pip install sella pytest jsonschema
+conda env create -f environment.yml
+conda activate pdft
 ```
 
-- `dftd3-python`는 D3(BJ) 등을 외부 바이너리 없이 쓰기 위한 권장 의존성입니다.
-- TS 최적화(Sella)를 쓰려면 `sella`가 필요합니다.
+- `environment.yml`에는 **Python 3.12**, PySCF 빌드를 위한 툴체인/라이브러리, ASE, D3/D4 의존성이 포함되어 있습니다.
+- TS 최적화(Sella)는 **필수**이므로 `sella`를 추가로 설치합니다.
 
-#### 2) PySCF 설치
-##### (A) 빠른 설치(권장, SMD가 필요 없으면)
 ```bash
-conda install -c conda-forge pyscf -y
+python -m pip install sella
 ```
 
-##### (B) SMD 사용이 필요하면: PySCF 소스 빌드(ENABLE_SMD=ON)
-기본 배포판에서 SMD가 동작하지 않는 환경이라면, 아래처럼 PySCF를 직접 빌드해 SMD를 활성화할 수 있습니다.
+#### 2) 잠금 파일 사용(권장, 재현성 필요 시)
+플랫폼별 잠금이 필요하면 `conda-lock`으로 잠금 파일을 생성합니다.
+
+```bash
+conda install -c conda-forge conda-lock -y
+conda-lock lock -f environment.yml -p linux-64
+conda-lock install --name pdft conda-lock.yml
+```
+
+다른 플랫폼이 필요하면 `-p osx-64`, `-p osx-arm64`, `-p win-64` 등을 추가해 다시 생성하세요.
+
+#### 3) PySCF 설치/빌드 (SMD 필수)
+SMD 사용이 **필수**이므로 PySCF를 소스에서 직접 빌드해 활성화합니다.
 
 ```bash
 git clone https://github.com/pyscf/pyscf.git

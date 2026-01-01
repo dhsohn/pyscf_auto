@@ -1,0 +1,26 @@
+name: pdft
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - git
+  - make
+  - cmake
+  - ninja
+  - gcc
+  - clang
+  - llvm-openmp
+  - openblas
+  - libxc
+  - xcfun
+  - libcint
+  - toml
+  - h5py
+  - scipy
+  - numpy
+  - compilers
+  - ase
+  - dftd3-python
+  - dftd4
+  - pytest
+  - jsonschema
