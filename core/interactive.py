@@ -30,6 +30,7 @@ CALCULATION_MODE_OPTIONS = [
     "구조 최적화",
     "단일점 에너지 계산",
     "프리퀀시 계산",
+    "IRC 계산",
 ]
 
 
@@ -90,6 +91,7 @@ def _prompt_interactive_config(args):
         "구조 최적화": "optimization",
         "단일점 에너지 계산": "single_point",
         "프리퀀시 계산": "frequency",
+        "IRC 계산": "irc",
     }[calculation_choice]
     optimization_choice = None
     if calculation_mode == "optimization":

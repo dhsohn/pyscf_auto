@@ -16,6 +16,7 @@ DEFAULT_LOG_PATH = "log/run.log"
 DEFAULT_EVENT_LOG_PATH = "log/run_events.jsonl"
 DEFAULT_OPTIMIZED_XYZ_PATH = "optimized.xyz"
 DEFAULT_FREQUENCY_PATH = "frequency_result.json"
+DEFAULT_IRC_PATH = "irc_result.json"
 DEFAULT_RUN_METADATA_PATH = "metadata.json"
 DEFAULT_QUEUE_PATH = "runs/queue.json"
 DEFAULT_QUEUE_LOCK_PATH = "runs/queue.lock"
@@ -38,7 +39,23 @@ RUN_CONFIG_SCHEMA = {
         "dispersion": {"type": ["string", "null"], "enum": ["d3bj", "d3zero", "d4", None]},
         "calculation_mode": {
             "type": "string",
-            "enum": ["optimization", "single_point", "frequency"],
+            "enum": ["optimization", "single_point", "frequency", "irc"],
+        },
+        "irc_enabled": {"type": ["boolean", "null"]},
+        "irc_file": {"type": ["string", "null"]},
+        "irc": {
+            "type": "object",
+            "properties": {
+                "steps": {"type": ["integer", "null"], "minimum": 1},
+                "step_size": {
+                    "type": ["number", "integer", "null"],
+                    "exclusiveMinimum": 0,
+                },
+                "force_threshold": {
+                    "type": ["number", "integer", "null"],
+                    "exclusiveMinimum": 0,
+                },
+            },
         },
         "thermo": {
             "type": "object",
@@ -62,6 +79,8 @@ RUN_CONFIG_EXAMPLES = {
     "solvent_model": "\"solvent_model\": \"pcm\"",
     "dispersion": "\"dispersion\": \"d3bj\"",
     "calculation_mode": "\"calculation_mode\": \"optimization\"",
+    "irc_enabled": "\"irc_enabled\": true",
+    "irc": "\"irc\": {\"steps\": 10, \"step_size\": 0.05, \"force_threshold\": 0.01}",
     "thermo": "\"thermo\": {\"T\": 298.15, \"P\": 1.0, \"unit\": \"atm\"}",
 }
 
@@ -221,6 +240,30 @@ class FrequencyConfig:
 
 
 @dataclass(frozen=True)
+class IrcConfig:
+    raw: dict[str, Any]
+    steps: int | None = None
+    step_size: float | None = None
+    force_threshold: float | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "IrcConfig | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("Config 'irc' must be an object.")
+        return cls(
+            raw=dict(data),
+            steps=data.get("steps"),
+            step_size=data.get("step_size"),
+            force_threshold=data.get("force_threshold"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
+
+
+@dataclass(frozen=True)
 class ThermoConfig:
     raw: dict[str, Any]
     temperature: float | None = None
@@ -259,16 +302,19 @@ class RunConfig:
     verbose: bool | None = None
     single_point_enabled: bool | None = None
     frequency_enabled: bool | None = None
+    irc_enabled: bool | None = None
     log_file: str | None = None
     event_log_file: str | None = None
     optimized_xyz_file: str | None = None
     run_metadata_file: str | None = None
     frequency_file: str | None = None
+    irc_file: str | None = None
     solvent_map: str | None = None
     optimizer: OptimizerConfig | None = None
     scf: SCFConfig | None = None
     single_point: SinglePointConfig | None = None
     frequency: FrequencyConfig | None = None
+    irc: IrcConfig | None = None
     thermo: ThermoConfig | None = None
 
     @classmethod
@@ -292,16 +338,19 @@ class RunConfig:
             verbose=data.get("verbose"),
             single_point_enabled=data.get("single_point_enabled"),
             frequency_enabled=data.get("frequency_enabled"),
+            irc_enabled=data.get("irc_enabled"),
             log_file=data.get("log_file"),
             event_log_file=data.get("event_log_file"),
             optimized_xyz_file=data.get("optimized_xyz_file"),
             run_metadata_file=data.get("run_metadata_file"),
             frequency_file=data.get("frequency_file"),
+            irc_file=data.get("irc_file"),
             solvent_map=data.get("solvent_map"),
             optimizer=OptimizerConfig.from_dict(data.get("optimizer")),
             scf=SCFConfig.from_dict(data.get("scf")),
             single_point=SinglePointConfig.from_dict(data.get("single_point")),
             frequency=FrequencyConfig.from_dict(frequency_block),
+            irc=IrcConfig.from_dict(data.get("irc")),
             thermo=ThermoConfig.from_dict(data.get("thermo")),
         )
 
@@ -453,12 +502,14 @@ def validate_run_config(config):
         "enforce_os_memory_limit": (is_bool, "Config '{name}' must be a boolean."),
         "verbose": (is_bool, "Config '{name}' must be a boolean."),
         "single_point_enabled": (is_bool, "Config '{name}' must be a boolean."),
+        "irc_enabled": (is_bool, "Config '{name}' must be a boolean."),
         "calculation_mode": (is_str, "Config '{name}' must be a string."),
         "log_file": (is_str, "Config '{name}' must be a string path."),
         "event_log_file": (is_str, "Config '{name}' must be a string path."),
         "optimized_xyz_file": (is_str, "Config '{name}' must be a string path."),
         "run_metadata_file": (is_str, "Config '{name}' must be a string path."),
         "frequency_file": (is_str, "Config '{name}' must be a string path."),
+        "irc_file": (is_str, "Config '{name}' must be a string path."),
         "basis": (is_str, "Config '{name}' must be a string."),
         "xc": (is_str, "Config '{name}' must be a string."),
         "solvent": (is_str, "Config '{name}' must be a string."),
@@ -663,6 +714,15 @@ def validate_run_config(config):
                 "dispersion_model": (is_str, "Config '{name}' must be a string."),
             }
             _validate_fields(config[frequency_key], frequency_rules, prefix=f"{frequency_key}.")
+    if "irc" in config and config["irc"] is not None:
+        if not isinstance(config["irc"], dict):
+            raise ValueError("Config 'irc' must be an object.")
+        irc_rules = {
+            "steps": (is_positive_int, "Config '{name}' must be a positive integer."),
+            "step_size": (is_positive_number, "Config '{name}' must be a positive number."),
+            "force_threshold": (is_positive_number, "Config '{name}' must be a positive number."),
+        }
+        _validate_fields(config["irc"], irc_rules, prefix="irc.")
     if "thermo" in config and config["thermo"] is not None:
         if not isinstance(config["thermo"], dict):
             raise ValueError("Config 'thermo' must be an object.")

@@ -635,6 +635,89 @@ def compute_frequencies(
     }
 
 
+def compute_imaginary_mode(
+    mol,
+    basis,
+    xc,
+    scf_config,
+    solvent_model,
+    solvent_name,
+    solvent_eps,
+    verbose,
+    memory_mb,
+    optimizer_mode=None,
+    multiplicity=None,
+    log_override=True,
+):
+    import numpy as np
+    try:
+        from ase.data import atomic_masses, atomic_numbers
+    except ImportError as exc:
+        raise ImportError(
+            "IRC mode extraction requires ASE (ase.data). Install ASE to proceed."
+        ) from exc
+    from pyscf import dft, hessian as pyscf_hessian
+
+    xc = normalize_xc_functional(xc)
+    mol_mode = mol.copy()
+    if basis:
+        mol_mode.basis = basis
+        mol_mode.build()
+    if memory_mb:
+        mol_mode.max_memory = memory_mb
+    ks_type = select_ks_type(
+        mol=mol_mode,
+        scf_config=scf_config,
+        optimizer_mode=optimizer_mode,
+        multiplicity=multiplicity,
+        log_override=log_override,
+    )
+    if ks_type == "RKS":
+        mf_mode = dft.RKS(mol_mode)
+    else:
+        mf_mode = dft.UKS(mol_mode)
+    mf_mode.xc = xc
+    if solvent_model is not None:
+        mf_mode = apply_solvent_model(
+            mf_mode,
+            solvent_model,
+            solvent_name,
+            solvent_eps,
+        )
+    if verbose:
+        mf_mode.verbose = 4
+    apply_scf_settings(mf_mode, scf_config)
+    mf_mode.kernel()
+    if hasattr(mf_mode, "Hessian"):
+        hess = mf_mode.Hessian().kernel()
+    else:
+        hess = pyscf_hessian.Hessian(mf_mode).kernel()
+    hess = np.asarray(hess)
+    natm = mol_mode.natm
+    if hess.ndim == 4:
+        hess = hess.reshape(natm * 3, natm * 3)
+    symbols = [mol_mode.atom_symbol(i) for i in range(natm)]
+    masses = [atomic_masses[atomic_numbers[symbol]] for symbol in symbols]
+    mass_vector = np.repeat(np.asarray(masses, dtype=float), 3)
+    sqrt_mass = np.sqrt(mass_vector)
+    mass_weight = np.outer(sqrt_mass, sqrt_mass)
+    hess_mw = hess / mass_weight
+    eigvals, eigvecs = np.linalg.eigh(hess_mw)
+    min_index = int(np.argmin(eigvals))
+    mode_mw = eigvecs[:, min_index]
+    mode_cart = mode_mw / sqrt_mass
+    norm = np.linalg.norm(mode_cart)
+    if norm == 0:
+        raise ValueError("Failed to normalize imaginary mode; eigenvector norm is zero.")
+    mode_cart = mode_cart / norm
+    return {
+        "mode": mode_cart.reshape(natm, 3),
+        "eigenvalue": float(eigvals[min_index]),
+        "natoms": natm,
+        "symbols": symbols,
+    }
+
+
 def run_capability_check(
     mol,
     basis,

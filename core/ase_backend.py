@@ -21,10 +21,9 @@ def _build_atom_spec_from_ase(atoms):
     return "\n".join(lines)
 
 
-def _run_ase_optimizer(
-    input_xyz,
-    output_xyz,
-    run_dir,
+def _build_pyscf_calculator(
+    *,
+    atoms,
     charge,
     spin,
     multiplicity,
@@ -39,22 +38,11 @@ def _run_ase_optimizer(
     memory_mb,
     optimizer_config,
     optimization_mode,
-    step_callback=None,
 ):
     import numpy as np
 
-    try:
-        from ase import units
-        from ase.calculators.calculator import Calculator, all_changes
-        from ase.io import read as ase_read
-        from ase.io import write as ase_write
-        from ase.optimize import BFGS, FIRE, GPMin, LBFGS, MDMin
-    except ImportError as exc:
-        raise ImportError(
-            "ASE optimizer requested but ASE or required calculators are not installed. "
-            "Install ASE with DFTD3 support (e.g., `conda install -c conda-forge ase`)."
-        ) from exc
-
+    from ase import units
+    from ase.calculators.calculator import Calculator, all_changes
     from pyscf import dft, gto
 
     xc = normalize_xc_functional(xc)
@@ -147,7 +135,6 @@ def _run_ase_optimizer(
             self.results["energy"] = energy_total
             self.results["forces"] = forces_total
 
-    atoms = ase_read(input_xyz)
     base_calc = PySCFCalculator()
     if dispersion_settings:
         backend = dispersion_settings["backend"]
@@ -173,9 +160,58 @@ def _run_ase_optimizer(
             from dftd4.ase import DFTD4
 
             dispersion_calc = DFTD4(atoms=atoms, **settings)
-        atoms.calc = _SumCalculator([base_calc, dispersion_calc])
-    else:
-        atoms.calc = base_calc
+        return _SumCalculator([base_calc, dispersion_calc])
+    return base_calc
+
+
+def _run_ase_optimizer(
+    input_xyz,
+    output_xyz,
+    run_dir,
+    charge,
+    spin,
+    multiplicity,
+    basis,
+    xc,
+    scf_config,
+    solvent_model,
+    solvent_name,
+    solvent_eps,
+    dispersion_model,
+    verbose,
+    memory_mb,
+    optimizer_config,
+    optimization_mode,
+    step_callback=None,
+):
+    try:
+        from ase.io import read as ase_read
+        from ase.io import write as ase_write
+        from ase.optimize import BFGS, FIRE, GPMin, LBFGS, MDMin
+    except ImportError as exc:
+        raise ImportError(
+            "ASE optimizer requested but ASE or required calculators are not installed. "
+            "Install ASE with DFTD3 support (e.g., `conda install -c conda-forge ase`)."
+        ) from exc
+
+    atoms = ase_read(input_xyz)
+    atoms.calc = _build_pyscf_calculator(
+        atoms=atoms,
+        charge=charge,
+        spin=spin,
+        multiplicity=multiplicity,
+        basis=basis,
+        xc=xc,
+        scf_config=scf_config,
+        solvent_model=solvent_model,
+        solvent_name=solvent_name,
+        solvent_eps=solvent_eps,
+        dispersion_model=dispersion_model,
+        verbose=verbose,
+        memory_mb=memory_mb,
+        optimizer_config=optimizer_config,
+        optimization_mode=optimization_mode,
+    )
 
     optimizer_name = (optimizer_config.get("optimizer") or "").lower()
     if not optimizer_name:
@@ -249,4 +285,108 @@ def _run_ase_optimizer(
     return getattr(optimizer, "nsteps", None)
 
 
-__all__ = ["_run_ase_optimizer"]
+def _run_ase_irc(
+    input_xyz,
+    run_dir,
+    charge,
+    spin,
+    multiplicity,
+    basis,
+    xc,
+    scf_config,
+    solvent_model,
+    solvent_name,
+    solvent_eps,
+    dispersion_model,
+    verbose,
+    memory_mb,
+    optimizer_config,
+    optimization_mode,
+    mode_vector,
+    steps,
+    step_size,
+    force_threshold,
+    output_prefix="irc",
+):
+    import numpy as np
+
+    try:
+        from ase import units
+        from ase.io import read as ase_read
+        from ase.io import write as ase_write
+    except ImportError as exc:
+        raise ImportError(
+            "ASE IRC requested but ASE or required calculators are not installed. "
+            "Install ASE with DFTD3 support (e.g., `conda install -c conda-forge ase`)."
+        ) from exc
+
+    atoms = ase_read(input_xyz)
+    atoms.calc = _build_pyscf_calculator(
+        atoms=atoms,
+        charge=charge,
+        spin=spin,
+        multiplicity=multiplicity,
+        basis=basis,
+        xc=xc,
+        scf_config=scf_config,
+        solvent_model=solvent_model,
+        solvent_name=solvent_name,
+        solvent_eps=solvent_eps,
+        dispersion_model=dispersion_model,
+        verbose=verbose,
+        memory_mb=memory_mb,
+        optimizer_config=optimizer_config,
+        optimization_mode=optimization_mode,
+    )
+    positions = atoms.get_positions()
+    mode = np.asarray(mode_vector, dtype=float)
+    if mode.shape != positions.shape:
+        raise ValueError("IRC mode vector shape does not match atom coordinates.")
+    mode_norm = np.linalg.norm(mode)
+    if mode_norm == 0:
+        raise ValueError("IRC mode vector is zero; cannot start IRC.")
+    initial_direction = mode / mode_norm
+    masses = atoms.get_masses()
+    if np.any(masses <= 0):
+        raise ValueError("Invalid atomic masses encountered for IRC.")
+    profile = []
+    outputs = {}
+
+    for label, sign in (("forward", 1.0), ("reverse", -1.0)):
+        step_atoms = atoms.copy()
+        step_atoms.calc = atoms.calc
+        direction_unit = initial_direction
+        step_atoms.set_positions(positions + sign * step_size * direction_unit)
+        output_xyz = resolve_run_path(run_dir, f"{output_prefix}_{label}.xyz")
+        outputs[label] = output_xyz
+        ensure_parent_dir(output_xyz)
+        for step_index in range(steps):
+            energy_ev = step_atoms.get_potential_energy()
+            forces = step_atoms.get_forces()
+            profile.append(
+                {
+                    "direction": label,
+                    "step": step_index,
+                    "energy_ev": float(energy_ev),
+                    "energy_hartree": float(energy_ev / units.Hartree),
+                }
+            )
+            ase_write(output_xyz, step_atoms, format="xyz", append=True)
+            force_norm = np.linalg.norm(forces)
+            if force_norm < force_threshold:
+                break
+            mass_weighted = forces / masses[:, None]
+            mass_norm = np.linalg.norm(mass_weighted)
+            if mass_norm == 0:
+                break
+            direction_unit = mass_weighted / mass_norm
+            step_atoms.set_positions(step_atoms.get_positions() + step_size * direction_unit)
+
+    return {
+        "profile": profile,
+        "forward_xyz": outputs.get("forward"),
+        "reverse_xyz": outputs.get("reverse"),
+    }
+
+
+__all__ = ["_run_ase_optimizer", "_run_ase_irc"]

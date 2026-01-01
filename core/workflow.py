@@ -10,7 +10,7 @@ import traceback
 import uuid
 from datetime import datetime
 
-from .ase_backend import _run_ase_optimizer
+from .ase_backend import _run_ase_irc, _run_ase_optimizer
 from .queue import (
     enqueue_run,
     ensure_queue_runner_started,
@@ -22,6 +22,7 @@ from .run_opt_engine import (
     apply_scf_settings,
     apply_solvent_model,
     compute_frequencies,
+    compute_imaginary_mode,
     compute_single_point_energy,
     load_xyz,
     normalize_xc_functional,
@@ -32,6 +33,7 @@ from .run_opt_engine import (
 from .run_opt_config import (
     DEFAULT_EVENT_LOG_PATH,
     DEFAULT_FREQUENCY_PATH,
+    DEFAULT_IRC_PATH,
     DEFAULT_LOG_PATH,
     DEFAULT_OPTIMIZED_XYZ_PATH,
     DEFAULT_QUEUE_LOCK_PATH,
@@ -240,9 +242,16 @@ def _normalize_calculation_mode(mode_value):
         "진동",
     ):
         return "frequency"
+    if normalized in (
+        "irc",
+        "intrinsicreactioncoordinate",
+        "reactionpath",
+        "reactioncoordinate",
+    ):
+        return "irc"
     raise ValueError(
         "Unsupported calculation mode '{value}'. Use 'optimization', "
-        "'single_point', or 'frequency'.".format(value=mode_value)
+        "'single_point', 'frequency', or 'irc'.".format(value=mode_value)
     )
 
 
@@ -327,9 +336,9 @@ def prepare_run_context(args, config: RunConfig, config_raw):
     optimizer_ase_config = optimizer_config.ase if optimizer_config else None
     optimizer_ase_dict = optimizer_ase_config.to_dict() if optimizer_ase_config else {}
     optimizer_mode = None
-    if calculation_mode == "optimization":
+    if calculation_mode in ("optimization", "irc"):
         optimizer_mode = _normalize_optimizer_mode(
-            optimizer_config.mode if optimizer_config else None
+            optimizer_config.mode if optimizer_config else ("transition_state" if calculation_mode == "irc" else None)
         )
     solvent_map_path = config.solvent_map or DEFAULT_SOLVENT_MAP_PATH
     single_point_config = config.single_point
@@ -337,6 +346,11 @@ def prepare_run_context(args, config: RunConfig, config_raw):
     frequency_enabled, single_point_enabled = _normalize_stage_flags(
         config, calculation_mode
     )
+    if calculation_mode == "optimization":
+        irc_enabled = bool(config.irc_enabled)
+    else:
+        irc_enabled = calculation_mode == "irc"
+    irc_config = config.irc
     if not basis:
         raise ValueError("Config must define 'basis' in the JSON config file.")
     if not xc:
@@ -365,10 +379,12 @@ def prepare_run_context(args, config: RunConfig, config_raw):
     frequency_output_path = resolve_run_path(
         run_dir, config.frequency_file or DEFAULT_FREQUENCY_PATH
     )
+    irc_output_path = resolve_run_path(run_dir, config.irc_file or DEFAULT_IRC_PATH)
     ensure_parent_dir(log_path)
     ensure_parent_dir(optimized_xyz_path)
     ensure_parent_dir(run_metadata_path)
     ensure_parent_dir(frequency_output_path)
+    ensure_parent_dir(irc_output_path)
 
     if args.interactive:
         config_used_path = resolve_run_path(run_dir, "config_used.json")
@@ -411,8 +427,11 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         "optimized_xyz_path": optimized_xyz_path,
         "run_metadata_path": run_metadata_path,
         "frequency_output_path": frequency_output_path,
+        "irc_output_path": irc_output_path,
         "event_log_path": event_log_path,
         "run_id": run_id,
+        "irc_enabled": irc_enabled,
+        "irc_config": irc_config,
     }
 
 
@@ -765,6 +784,98 @@ def run_frequency_stage(stage_context, queue_update_fn):
         raise
 
 
+def run_irc_stage(stage_context, queue_update_fn):
+    logging.info("Starting IRC calculation...")
+    run_start = stage_context["run_start"]
+    calculation_metadata = stage_context["metadata"]
+    try:
+        irc_result = _run_ase_irc(
+            stage_context["input_xyz"],
+            stage_context["run_dir"],
+            stage_context["charge"],
+            stage_context["spin"],
+            stage_context["multiplicity"],
+            stage_context["calc_basis"],
+            stage_context["calc_xc"],
+            stage_context["calc_scf_config"],
+            stage_context["calc_solvent_model"],
+            stage_context["calc_solvent_name"],
+            stage_context["calc_eps"],
+            stage_context["calc_dispersion_model"],
+            stage_context["verbose"],
+            stage_context["memory_mb"],
+            stage_context["optimizer_ase_config"],
+            stage_context["optimizer_mode"],
+            stage_context["mode_vector"],
+            stage_context["irc_steps"],
+            stage_context["irc_step_size"],
+            stage_context["irc_force_threshold"],
+        )
+        irc_payload = {
+            "status": "completed",
+            "output_file": stage_context["irc_output_path"],
+            "forward_xyz": irc_result.get("forward_xyz"),
+            "reverse_xyz": irc_result.get("reverse_xyz"),
+            "steps": stage_context["irc_steps"],
+            "step_size": stage_context["irc_step_size"],
+            "force_threshold": stage_context["irc_force_threshold"],
+            "mode_eigenvalue": stage_context.get("mode_eigenvalue"),
+            "profile": irc_result.get("profile", []),
+        }
+        with open(stage_context["irc_output_path"], "w", encoding="utf-8") as handle:
+            json.dump(irc_payload, handle, indent=2)
+        calculation_metadata["irc"] = irc_payload
+        energy_summary = None
+        if irc_payload["profile"]:
+            energy_summary = {
+                "start_energy_ev": irc_payload["profile"][0]["energy_ev"],
+                "end_energy_ev": irc_payload["profile"][-1]["energy_ev"],
+            }
+        summary = {
+            "elapsed_seconds": time.perf_counter() - run_start,
+            "n_steps": len(irc_payload["profile"]),
+            "final_energy": energy_summary["end_energy_ev"] if energy_summary else None,
+            "opt_final_energy": None,
+            "final_sp_energy": None,
+            "final_sp_converged": None,
+            "final_sp_cycles": None,
+            "scf_converged": None,
+            "opt_converged": None,
+            "converged": True,
+        }
+        calculation_metadata["summary"] = summary
+        calculation_metadata["summary"]["memory_limit_enforced"] = stage_context[
+            "memory_limit_enforced"
+        ]
+        finalize_metadata(
+            stage_context["run_metadata_path"],
+            stage_context["event_log_path"],
+            stage_context["run_id"],
+            stage_context["run_dir"],
+            calculation_metadata,
+            status="completed",
+            previous_status="running",
+            queue_update_fn=queue_update_fn,
+            exit_code=0,
+        )
+    except Exception as exc:
+        logging.exception("IRC calculation failed.")
+        finalize_metadata(
+            stage_context["run_metadata_path"],
+            stage_context["event_log_path"],
+            stage_context["run_id"],
+            stage_context["run_dir"],
+            calculation_metadata,
+            status="failed",
+            previous_status="running",
+            queue_update_fn=queue_update_fn,
+            exit_code=1,
+            details={"error": str(exc)},
+            error=exc,
+        )
+        raise
+
+
 def run_optimization_stage(
     args,
     context,
@@ -798,8 +909,11 @@ def run_optimization_stage(
     optimized_xyz_path = context["optimized_xyz_path"]
     run_metadata_path = context["run_metadata_path"]
     frequency_output_path = context["frequency_output_path"]
+    irc_output_path = context["irc_output_path"]
     event_log_path = context["event_log_path"]
     run_id = context["run_id"]
+    irc_enabled = context["irc_enabled"]
+    irc_config = context["irc_config"]
     mol = molecule_context["mol"]
     mf = molecule_context["mf"]
     charge = molecule_context["charge"]
@@ -948,6 +1062,7 @@ def run_optimization_stage(
         },
         "single_point_enabled": single_point_enabled,
         "frequency_enabled": frequency_enabled,
+        "irc_enabled": irc_enabled,
         "calculation_mode": "optimization",
         "charge": charge,
         "spin": spin,
@@ -963,6 +1078,7 @@ def run_optimization_stage(
         "event_log_file": event_log_path,
         "optimized_xyz_file": optimized_xyz_path,
         "frequency_file": frequency_output_path,
+        "irc_file": irc_output_path,
         "run_metadata_file": run_metadata_path,
         "config_file": args.config,
         "config": context["config_dict"],
@@ -1194,6 +1310,28 @@ def run_optimization_stage(
         with open(frequency_output_path, "w", encoding="utf-8") as handle:
             json.dump(frequency_payload, handle, indent=2)
         optimization_metadata["frequency"] = frequency_payload
+    irc_status = "skipped"
+    irc_skip_reason = None
+    if irc_enabled:
+        expected_imaginary = 1 if optimizer_mode == "transition_state" else 0
+        if frequency_enabled and imaginary_count is not None:
+            if imaginary_count != expected_imaginary:
+                irc_skip_reason = (
+                    "Imaginary frequency count does not match expected "
+                    f"{expected_imaginary}."
+                )
+                logging.warning("Skipping IRC: %s", irc_skip_reason)
+            else:
+                irc_status = "pending"
+        else:
+            irc_status = "pending"
+            if optimizer_mode == "transition_state" and not frequency_enabled:
+                logging.warning(
+                    "IRC requested without frequency check; proceeding without "
+                    "imaginary mode validation."
+                )
+    else:
+        irc_skip_reason = "IRC calculation disabled."
     run_single_point = False
     sp_status = "skipped"
     sp_skip_reason = None
@@ -1231,6 +1369,11 @@ def run_optimization_stage(
 
     optimization_metadata["single_point"]["status"] = sp_status
     optimization_metadata["single_point"]["skip_reason"] = sp_skip_reason
+    optimization_metadata["irc"] = {
+        "status": irc_status,
+        "skip_reason": irc_skip_reason,
+        "output_file": irc_output_path,
+    }
     if frequency_payload is not None:
         frequency_payload["single_point"] = {
             "status": sp_status,
@@ -1240,6 +1383,89 @@ def run_optimization_stage(
             json.dump(frequency_payload, handle, indent=2)
 
     try:
+        if irc_status == "pending":
+            logging.info("Running IRC for optimized geometry...")
+            irc_steps = 10
+            irc_step_size = 0.05
+            irc_force_threshold = 0.01
+            if irc_config:
+                if irc_config.steps is not None:
+                    irc_steps = irc_config.steps
+                if irc_config.step_size is not None:
+                    irc_step_size = irc_config.step_size
+                if irc_config.force_threshold is not None:
+                    irc_force_threshold = irc_config.force_threshold
+            try:
+                mode_result = compute_imaginary_mode(
+                    mol_optimized,
+                    context["sp_basis"],
+                    context["sp_xc"],
+                    context["sp_scf_config"],
+                    context["sp_solvent_model"] if context["sp_solvent_name"] else None,
+                    context["sp_solvent_name"],
+                    context["sp_eps"],
+                    verbose,
+                    memory_mb,
+                    optimizer_mode=optimizer_mode,
+                    multiplicity=multiplicity,
+                )
+                if mode_result.get("eigenvalue", 0.0) >= 0:
+                    logging.warning(
+                        "IRC mode eigenvalue is non-negative (%.6f); "
+                        "structure may not be a first-order saddle point.",
+                        mode_result.get("eigenvalue", 0.0),
+                    )
+                irc_result = _run_ase_irc(
+                    output_xyz_path,
+                    run_dir,
+                    charge,
+                    spin,
+                    multiplicity,
+                    context["sp_basis"],
+                    context["sp_xc"],
+                    context["sp_scf_config"],
+                    context["sp_solvent_model"] if context["sp_solvent_name"] else None,
+                    context["sp_solvent_name"],
+                    context["sp_eps"],
+                    context["sp_dispersion_model"],
+                    verbose,
+                    memory_mb,
+                    optimizer_ase_dict,
+                    optimizer_mode,
+                    mode_result["mode"],
+                    irc_steps,
+                    irc_step_size,
+                    irc_force_threshold,
+                )
+                irc_payload = {
+                    "status": "completed",
+                    "output_file": irc_output_path,
+                    "forward_xyz": irc_result.get("forward_xyz"),
+                    "reverse_xyz": irc_result.get("reverse_xyz"),
+                    "steps": irc_steps,
+                    "step_size": irc_step_size,
+                    "force_threshold": irc_force_threshold,
+                    "mode_eigenvalue": mode_result.get("eigenvalue"),
+                    "profile": irc_result.get("profile", []),
+                }
+                irc_status = "executed"
+            except Exception as exc:
+                logging.exception("IRC calculation failed.")
+                irc_payload = {
+                    "status": "failed",
+                    "output_file": irc_output_path,
+                    "steps": irc_steps,
+                    "step_size": irc_step_size,
+                    "force_threshold": irc_force_threshold,
+                    "error": str(exc),
+                    "traceback": traceback.format_exc(),
+                }
+                irc_status = "failed"
+            with open(irc_output_path, "w", encoding="utf-8") as handle:
+                json.dump(irc_payload, handle, indent=2)
+            optimization_metadata["irc"] = irc_payload
+        elif irc_status == "skipped":
+            logging.info("Skipping IRC calculation.")
         if run_single_point:
             logging.info("Calculating single-point energy for optimized geometry...")
             sp_result = compute_single_point_energy(
@@ -1267,7 +1493,7 @@ def run_optimization_stage(
         elif single_point_enabled:
             logging.info("Skipping single-point energy calculation.")
     except Exception:
-        logging.exception("Single-point energy calculation failed.")
+        logging.exception("Post-optimization calculations failed.")
         if run_single_point:
             final_sp_energy = None
             final_sp_converged = None
@@ -1385,6 +1611,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             "optimization": "Geometry optimization",
             "single_point": "Single-point",
             "frequency": "Frequency",
+            "irc": "IRC",
         }[calculation_mode]
         dispersion_model = _normalize_dispersion_settings(
             calculation_label,
@@ -1548,7 +1775,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             calc_solvent_map_path = sp_solvent_map_path
             calc_eps = sp_eps
             calc_dispersion_model = (
-                sp_dispersion_model if calculation_mode == "single_point" else freq_dispersion_model
+                freq_dispersion_model if calculation_mode == "frequency" else sp_dispersion_model
             )
             calc_ks_type = select_ks_type(
                 mol=mol,
@@ -1558,8 +1785,12 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             )
             logging.info(
                 "Running capability check for %s calculation (SCF%s)...",
-                "single-point" if calculation_mode == "single_point" else "frequency",
-                " + Hessian" if calculation_mode == "frequency" else "",
+                "single-point"
+                if calculation_mode == "single_point"
+                else "frequency"
+                if calculation_mode == "frequency"
+                else "IRC",
+                " + Hessian" if calculation_mode in ("frequency", "irc") else "",
             )
             run_capability_check(
                 mol,
@@ -1571,7 +1802,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                 calc_eps,
                 calc_dispersion_model if calculation_mode == "frequency" else None,
                 freq_dispersion_mode if calculation_mode == "frequency" else "none",
-                require_hessian=calculation_mode == "frequency",
+                require_hessian=calculation_mode in ("frequency", "irc"),
                 verbose=verbose,
                 memory_mb=memory_mb,
                 optimizer_mode=optimizer_mode,
@@ -1680,6 +1911,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                 "log_file": log_path,
                 "event_log_file": event_log_path,
                 "frequency_file": frequency_output_path,
+                "irc_file": context["irc_output_path"],
                 "run_metadata_file": run_metadata_path,
                 "config_file": args.config,
                 "config": config_dict,
@@ -1728,11 +1960,57 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                 "run_id": run_id,
                 "run_dir": run_dir,
                 "frequency_output_path": frequency_output_path,
+                "irc_output_path": context["irc_output_path"],
+                "input_xyz": args.xyz_file,
+                "charge": charge,
+                "spin": spin,
+                "optimizer_ase_config": context["optimizer_ase_dict"],
             }
             if calculation_mode == "single_point":
                 run_single_point_stage(stage_context, _update_foreground_queue)
-            else:
+            elif calculation_mode == "frequency":
                 run_frequency_stage(stage_context, _update_foreground_queue)
+            else:
+                irc_config = context["irc_config"]
+                irc_steps = 10
+                irc_step_size = 0.05
+                irc_force_threshold = 0.01
+                if irc_config:
+                    if irc_config.steps is not None:
+                        irc_steps = irc_config.steps
+                    if irc_config.step_size is not None:
+                        irc_step_size = irc_config.step_size
+                    if irc_config.force_threshold is not None:
+                        irc_force_threshold = irc_config.force_threshold
+                mode_result = compute_imaginary_mode(
+                    mol,
+                    calc_basis,
+                    calc_xc,
+                    calc_scf_config,
+                    calc_solvent_model if calc_solvent_name else None,
+                    calc_solvent_name,
+                    calc_eps,
+                    verbose,
+                    memory_mb,
+                    optimizer_mode=optimizer_mode,
+                    multiplicity=multiplicity,
+                )
+                if mode_result.get("eigenvalue", 0.0) >= 0:
+                    logging.warning(
+                        "IRC mode eigenvalue is non-negative (%.6f); "
+                        "structure may not be a first-order saddle point.",
+                        mode_result.get("eigenvalue", 0.0),
+                    )
+                stage_context.update(
+                    {
+                        "mode_vector": mode_result["mode"],
+                        "mode_eigenvalue": mode_result.get("eigenvalue"),
+                        "irc_steps": irc_steps,
+                        "irc_step_size": irc_step_size,
+                        "irc_force_threshold": irc_force_threshold,
+                    }
+                )
+                run_irc_stage(stage_context, _update_foreground_queue)
             return
 
         if calculation_mode == "optimization":
