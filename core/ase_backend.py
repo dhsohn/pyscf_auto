@@ -276,8 +276,8 @@ def _apply_constraints(atoms, constraints):
         i, j, k, angle = entry
         constraint_objects.append(FixAngle(i, j, k, angle))
     for entry in dihedral_entries:
-        i, j, k, l, value = entry
-        constraint_objects.append(FixDihedral(i, j, k, l, value))
+        i, j, k, atom_l, value = entry
+        constraint_objects.append(FixDihedral(i, j, k, atom_l, value))
     if constraint_objects:
         atoms.set_constraint(constraint_objects)
 
