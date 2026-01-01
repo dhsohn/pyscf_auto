@@ -104,14 +104,13 @@ conda create -n DFT python=3.12 -y
 conda activate DFT
 
 conda install -c conda-forge \
-  numpy scipy h5py \
-  ase \
+  git make cmake ninja \
+  openblas gcc clang llvm-openmp \
   libxc xcfun libcint \
-  openblas \
-  dftd3-python \
-  -y
+  h5py scipy numpy compilers \
+  ase toml dftd3-python dftd4
 
-python -m pip install sella dftd4 pytest jsonschema
+python -m pip install sella pytest jsonschema
 ```
 
 - `dftd3-python`는 D3(BJ) 등을 외부 바이너리 없이 쓰기 위한 권장 의존성입니다.
