@@ -104,6 +104,13 @@ def _frequency_units():
         "frequencies_au": "a.u.",
         "energy": "Hartree",
         "zpe": "Hartree",
+        "thermochemistry_temperature": "K",
+        "thermochemistry_pressure": "config unit",
+        "thermochemistry_zpe": "Hartree",
+        "thermochemistry_thermal_correction_enthalpy": "Hartree",
+        "thermochemistry_entropy": "Hartree/K",
+        "thermochemistry_gibbs_correction": "Hartree",
+        "thermochemistry_gibbs_free_energy": "Hartree",
         "min_frequency": "cm^-1",
         "max_frequency": "cm^-1",
         "dispersion_energy_hartree": "Hartree",
@@ -115,8 +122,32 @@ def _frequency_versions():
     return {
         "ase": get_package_version("ase"),
         "pyscf": get_package_version("pyscf"),
+        "pyscf_hessian_thermo": get_package_version("pyscf"),
         "dftd3": get_package_version("dftd3"),
         "dftd4": get_package_version("dftd4"),
+    }
+
+
+def _thermochemistry_payload(thermo_config, thermochemistry):
+    if thermochemistry is not None:
+        return thermochemistry
+    if not thermo_config:
+        return None
+    if hasattr(thermo_config, "to_dict"):
+        thermo_data = thermo_config.to_dict()
+    elif isinstance(thermo_config, dict):
+        thermo_data = thermo_config
+    else:
+        thermo_data = {}
+    return {
+        "temperature": thermo_data.get("T"),
+        "pressure": thermo_data.get("P"),
+        "pressure_unit": thermo_data.get("unit"),
+        "zpe": None,
+        "thermal_correction_enthalpy": None,
+        "entropy": None,
+        "gibbs_correction": None,
+        "gibbs_free_energy": None,
     }
 
 
@@ -302,6 +333,7 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         )
     solvent_map_path = config.solvent_map or DEFAULT_SOLVENT_MAP_PATH
     single_point_config = config.single_point
+    thermo_config = config.thermo
     frequency_enabled, single_point_enabled = _normalize_stage_flags(
         config, calculation_mode
     )
@@ -367,6 +399,7 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         "optimizer_mode": optimizer_mode,
         "solvent_map_path": solvent_map_path,
         "single_point_config": single_point_config,
+        "thermo": thermo_config,
         "frequency_enabled": frequency_enabled,
         "single_point_enabled": single_point_enabled,
         "thread_count": thread_count,
@@ -643,6 +676,7 @@ def run_frequency_stage(stage_context, queue_update_fn):
             stage_context["calc_eps"],
             stage_context["calc_dispersion_model"],
             stage_context["freq_dispersion_mode"],
+            stage_context["thermo"],
             stage_context["verbose"],
             stage_context["memory_mb"],
             optimizer_mode=stage_context["optimizer_mode"],
@@ -672,6 +706,9 @@ def run_frequency_stage(stage_context, queue_update_fn):
             "solvent_eps": stage_context["calc_eps"],
             "dispersion": stage_context["calc_dispersion_model"],
             "dispersion_mode": stage_context["freq_dispersion_mode"],
+            "thermochemistry": _thermochemistry_payload(
+                stage_context["thermo"], frequency_result.get("thermochemistry")
+            ),
             "results": frequency_result,
         }
         with open(
@@ -1079,6 +1116,7 @@ def run_optimization_stage(
                 context["sp_eps"],
                 context["freq_dispersion_model"],
                 context["freq_dispersion_mode"],
+                context["thermo"],
                 verbose,
                 memory_mb,
                 optimizer_mode=optimizer_mode,
@@ -1108,6 +1146,9 @@ def run_optimization_stage(
                 "solvent_eps": context["sp_eps"],
                 "dispersion": context["freq_dispersion_model"],
                 "dispersion_mode": context["freq_dispersion_mode"],
+                "thermochemistry": _thermochemistry_payload(
+                    context["thermo"], frequency_result.get("thermochemistry")
+                ),
                 "results": frequency_result,
             }
             with open(frequency_output_path, "w", encoding="utf-8") as handle:
@@ -1132,6 +1173,7 @@ def run_optimization_stage(
                 "solvent_eps": context["sp_eps"],
                 "dispersion": context["freq_dispersion_model"],
                 "dispersion_mode": context["freq_dispersion_mode"],
+                "thermochemistry": _thermochemistry_payload(context["thermo"], None),
                 "results": None,
                 "error": str(exc),
                 "traceback": traceback.format_exc(),
@@ -1146,6 +1188,7 @@ def run_optimization_stage(
             "reason": "Frequency calculation disabled.",
             "units": _frequency_units(),
             "versions": _frequency_versions(),
+            "thermochemistry": _thermochemistry_payload(context["thermo"], None),
             "results": None,
         }
         with open(frequency_output_path, "w", encoding="utf-8") as handle:
@@ -1672,6 +1715,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                 "calc_eps": calc_eps,
                 "calc_dispersion_model": calc_dispersion_model,
                 "freq_dispersion_mode": freq_dispersion_mode,
+                "thermo": context["thermo"],
                 "verbose": verbose,
                 "memory_mb": memory_mb,
                 "optimizer_mode": optimizer_mode,

@@ -430,6 +430,7 @@ def compute_frequencies(
     solvent_eps,
     dispersion,
     dispersion_hessian_mode,
+    thermo,
     verbose,
     memory_mb,
     optimizer_mode=None,
@@ -520,6 +521,8 @@ def compute_frequencies(
     def _to_scalar(value):
         if value is None:
             return None
+        if hasattr(value, "item"):
+            return value.item()
         if hasattr(value, "tolist"):
             return value.tolist()
         return value
@@ -527,6 +530,63 @@ def compute_frequencies(
     freq_wavenumber_list = _to_list(freq_wavenumber)
     freq_au_list = _to_list(freq_au)
     zpe_value = _to_scalar(zpe)
+    thermochemistry = None
+    thermo_settings = None
+    if thermo:
+        if hasattr(thermo, "to_dict"):
+            thermo_settings = thermo.to_dict()
+        elif isinstance(thermo, dict):
+            thermo_settings = thermo
+    if thermo_settings:
+        temperature = thermo_settings.get("T")
+        pressure = thermo_settings.get("P")
+        pressure_unit = thermo_settings.get("unit")
+        thermo_result = None
+        if freq_au is not None:
+            thermo_result = pyscf_thermo.thermo(
+                mol_freq,
+                freq_au,
+                temperature=temperature,
+                pressure=pressure,
+                unit=pressure_unit,
+            )
+
+        def _thermo_value(keys):
+            if not thermo_result:
+                return None
+            for key in keys:
+                if key in thermo_result:
+                    return thermo_result[key]
+            return None
+
+        zpe_thermo = _thermo_value(
+            ("zpe", "ZPE", "zpve", "ZPVE", "zero_point_energy", "zero_point_energy_hartree")
+        )
+        enthalpy_total = _thermo_value(("H", "enthalpy"))
+        gibbs_total = _thermo_value(("G", "gibbs"))
+        entropy = _thermo_value(("S", "entropy"))
+        zpe_for_thermo = _to_scalar(zpe_thermo) if zpe_thermo is not None else zpe_value
+        enthalpy_total_value = _to_scalar(enthalpy_total)
+        gibbs_total_value = _to_scalar(gibbs_total)
+        entropy_value = _to_scalar(entropy)
+        thermal_correction_enthalpy = None
+        gibbs_correction = None
+        gibbs_free_energy = None
+        if enthalpy_total_value is not None:
+            thermal_correction_enthalpy = enthalpy_total_value - energy
+        if gibbs_total_value is not None:
+            gibbs_correction = gibbs_total_value - energy
+            gibbs_free_energy = energy + gibbs_correction
+        thermochemistry = {
+            "temperature": _to_scalar(temperature),
+            "pressure": _to_scalar(pressure),
+            "pressure_unit": pressure_unit,
+            "zpe": zpe_for_thermo,
+            "thermal_correction_enthalpy": _to_scalar(thermal_correction_enthalpy),
+            "entropy": entropy_value,
+            "gibbs_correction": _to_scalar(gibbs_correction),
+            "gibbs_free_energy": _to_scalar(gibbs_free_energy),
+        }
     imaginary_count = None
     imaginary_status = None
     imaginary_message = None
@@ -571,6 +631,7 @@ def compute_frequencies(
         "min_frequency": min_frequency,
         "max_frequency": max_frequency,
         "dispersion": dispersion_info,
+        "thermochemistry": thermochemistry,
     }
 
 

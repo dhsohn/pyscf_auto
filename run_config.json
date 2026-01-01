@@ -6,6 +6,11 @@
   "basis": "6-31g",
   "xc": "b3lyp",
   "dispersion": "d3bj",
+  "thermo": {
+    "T": 298.15,
+    "P": 1.0,
+    "unit": "atm"
+  },
   "optimizer": {
     "mode": "minimum",
     "output_xyz": "ase_optimized.xyz",

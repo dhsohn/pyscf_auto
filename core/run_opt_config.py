@@ -40,6 +40,15 @@ RUN_CONFIG_SCHEMA = {
             "type": "string",
             "enum": ["optimization", "single_point", "frequency"],
         },
+        "thermo": {
+            "type": "object",
+            "required": ["T", "P", "unit"],
+            "properties": {
+                "T": {"type": ["number", "integer"]},
+                "P": {"type": ["number", "integer"]},
+                "unit": {"type": "string", "enum": ["atm", "bar", "Pa"]},
+            },
+        },
     },
     "additionalProperties": True,
 }
@@ -53,6 +62,7 @@ RUN_CONFIG_EXAMPLES = {
     "solvent_model": "\"solvent_model\": \"pcm\"",
     "dispersion": "\"dispersion\": \"d3bj\"",
     "calculation_mode": "\"calculation_mode\": \"optimization\"",
+    "thermo": "\"thermo\": {\"T\": 298.15, \"P\": 1.0, \"unit\": \"atm\"}",
 }
 
 
@@ -211,6 +221,30 @@ class FrequencyConfig:
 
 
 @dataclass(frozen=True)
+class ThermoConfig:
+    raw: dict[str, Any]
+    temperature: float | None = None
+    pressure: float | None = None
+    unit: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "ThermoConfig | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("Config 'thermo' must be an object.")
+        return cls(
+            raw=dict(data),
+            temperature=data.get("T"),
+            pressure=data.get("P"),
+            unit=data.get("unit"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
+
+
+@dataclass(frozen=True)
 class RunConfig:
     raw: dict[str, Any]
     threads: int | None = None
@@ -235,6 +269,7 @@ class RunConfig:
     scf: SCFConfig | None = None
     single_point: SinglePointConfig | None = None
     frequency: FrequencyConfig | None = None
+    thermo: ThermoConfig | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "RunConfig":
@@ -267,6 +302,7 @@ class RunConfig:
             scf=SCFConfig.from_dict(data.get("scf")),
             single_point=SinglePointConfig.from_dict(data.get("single_point")),
             frequency=FrequencyConfig.from_dict(frequency_block),
+            thermo=ThermoConfig.from_dict(data.get("thermo")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -627,6 +663,32 @@ def validate_run_config(config):
                 "dispersion_model": (is_str, "Config '{name}' must be a string."),
             }
             _validate_fields(config[frequency_key], frequency_rules, prefix=f"{frequency_key}.")
+    if "thermo" in config and config["thermo"] is not None:
+        if not isinstance(config["thermo"], dict):
+            raise ValueError("Config 'thermo' must be an object.")
+        thermo_rules = {
+            "T": (is_number, "Config '{name}' must be a number (int or float)."),
+            "P": (is_number, "Config '{name}' must be a number (int or float)."),
+            "unit": (is_str, "Config '{name}' must be a string."),
+        }
+        _validate_fields(config["thermo"], thermo_rules, prefix="thermo.")
+        temperature = config["thermo"].get("T")
+        pressure = config["thermo"].get("P")
+        if temperature is None or pressure is None or config["thermo"].get("unit") is None:
+            raise ValueError(
+                "Config 'thermo' must define 'T', 'P', and 'unit'. "
+                "Example: \"thermo\": {\"T\": 298.15, \"P\": 1.0, \"unit\": \"atm\"}."
+            )
+        if temperature <= 0:
+            raise ValueError("Config 'thermo.T' must be a positive number.")
+        if pressure <= 0:
+            raise ValueError("Config 'thermo.P' must be a positive number.")
+        unit = config["thermo"].get("unit")
+        if unit not in ("atm", "bar", "Pa"):
+            raise ValueError(
+                "Config 'thermo.unit' must be one of: atm, bar, Pa. "
+                "Example: \"thermo\": {\"T\": 298.15, \"P\": 1.0, \"unit\": \"atm\"}."
+            )
 
 
 def build_run_config(config):
