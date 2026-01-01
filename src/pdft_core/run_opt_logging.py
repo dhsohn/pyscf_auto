@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import sys
+from contextlib import contextmanager
 from datetime import datetime
 
 _ORIGINAL_STDOUT = sys.stdout
@@ -239,6 +240,35 @@ def setup_logging(log_path, verbose, run_id=None, event_log_path=None):
     sys.excepthook = _log_uncaught_exception
 
 
+@contextmanager
+def setup_logging_context(log_path, verbose, run_id=None, event_log_path=None):
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    original_excepthook = sys.excepthook
+    setup_logging(
+        log_path,
+        verbose,
+        run_id=run_id,
+        event_log_path=event_log_path,
+    )
+    try:
+        yield
+    finally:
+        if _TRACKING_STDOUT is not None:
+            try:
+                _TRACKING_STDOUT.ensure_newline()
+            except Exception:
+                pass
+        if _TRACKING_STDERR is not None:
+            try:
+                _TRACKING_STDERR.ensure_newline()
+            except Exception:
+                pass
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        sys.excepthook = original_excepthook
+
+
 def ensure_stream_newlines():
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "ensure_newline"):
@@ -246,4 +276,3 @@ def ensure_stream_newlines():
                 stream.ensure_newline()
             except Exception:
                 pass
-
