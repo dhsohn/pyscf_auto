@@ -1,6 +1,8 @@
 import json
 import os
 import re
+from dataclasses import dataclass
+from typing import Any, Mapping
 
 from jsonschema import Draft7Validator
 
@@ -49,6 +51,223 @@ RUN_CONFIG_EXAMPLES = {
     "dispersion": "\"dispersion\": \"d3bj\"",
     "calculation_mode": "\"calculation_mode\": \"optimization\"",
 }
+
+
+@dataclass(frozen=True)
+class SCFConfig:
+    raw: dict[str, Any]
+    max_cycle: int | None = None
+    conv_tol: float | None = None
+    level_shift: float | None = None
+    damping: float | None = None
+    diis: bool | int | None = None
+    force_restricted: bool | None = None
+    force_unrestricted: bool | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "SCFConfig | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("Config 'scf' must be an object.")
+        return cls(
+            raw=dict(data),
+            max_cycle=data.get("max_cycle"),
+            conv_tol=data.get("conv_tol"),
+            level_shift=data.get("level_shift"),
+            damping=data.get("damping"),
+            diis=data.get("diis"),
+            force_restricted=data.get("force_restricted"),
+            force_unrestricted=data.get("force_unrestricted"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
+
+
+@dataclass(frozen=True)
+class OptimizerASEConfig:
+    raw: dict[str, Any]
+    d3_params: dict[str, Any] | None = None
+    dftd3_params: dict[str, Any] | None = None
+    d3_backend: str | None = None
+    dftd3_backend: str | None = None
+    d3_command: str | None = None
+    dftd3_command: str | None = None
+    d3_command_validate: bool | None = None
+    optimizer: str | None = None
+    fmax: float | None = None
+    steps: int | None = None
+    trajectory: str | None = None
+    logfile: str | None = None
+    sella: dict[str, Any] | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "OptimizerASEConfig | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("Config 'optimizer.ase' must be an object.")
+        return cls(
+            raw=dict(data),
+            d3_params=data.get("d3_params"),
+            dftd3_params=data.get("dftd3_params"),
+            d3_backend=data.get("d3_backend"),
+            dftd3_backend=data.get("dftd3_backend"),
+            d3_command=data.get("d3_command"),
+            dftd3_command=data.get("dftd3_command"),
+            d3_command_validate=data.get("d3_command_validate"),
+            optimizer=data.get("optimizer"),
+            fmax=data.get("fmax"),
+            steps=data.get("steps"),
+            trajectory=data.get("trajectory"),
+            logfile=data.get("logfile"),
+            sella=data.get("sella"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
+
+
+@dataclass(frozen=True)
+class OptimizerConfig:
+    raw: dict[str, Any]
+    output_xyz: str | None = None
+    mode: str | None = None
+    ase: OptimizerASEConfig | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "OptimizerConfig | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("Config 'optimizer' must be an object.")
+        return cls(
+            raw=dict(data),
+            output_xyz=data.get("output_xyz"),
+            mode=data.get("mode"),
+            ase=OptimizerASEConfig.from_dict(data.get("ase")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
+
+
+@dataclass(frozen=True)
+class SinglePointConfig:
+    raw: dict[str, Any]
+    basis: str | None = None
+    xc: str | None = None
+    solvent: str | None = None
+    solvent_model: str | None = None
+    solvent_map: str | None = None
+    dispersion: str | None = None
+    scf: SCFConfig | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "SinglePointConfig | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("Config 'single_point' must be an object.")
+        return cls(
+            raw=dict(data),
+            basis=data.get("basis"),
+            xc=data.get("xc"),
+            solvent=data.get("solvent"),
+            solvent_model=data.get("solvent_model"),
+            solvent_map=data.get("solvent_map"),
+            dispersion=data.get("dispersion"),
+            scf=SCFConfig.from_dict(data.get("scf")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
+
+
+@dataclass(frozen=True)
+class FrequencyConfig:
+    raw: dict[str, Any]
+    dispersion: str | None = None
+    dispersion_model: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "FrequencyConfig | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("Config 'frequency' must be an object.")
+        return cls(
+            raw=dict(data),
+            dispersion=data.get("dispersion"),
+            dispersion_model=data.get("dispersion_model"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
+
+
+@dataclass(frozen=True)
+class RunConfig:
+    raw: dict[str, Any]
+    threads: int | None = None
+    memory_gb: float | None = None
+    basis: str | None = None
+    xc: str | None = None
+    solvent: str | None = None
+    solvent_model: str | None = None
+    dispersion: str | None = None
+    calculation_mode: str | None = None
+    enforce_os_memory_limit: bool | None = None
+    verbose: bool | None = None
+    single_point_enabled: bool | None = None
+    frequency_enabled: bool | None = None
+    log_file: str | None = None
+    event_log_file: str | None = None
+    optimized_xyz_file: str | None = None
+    run_metadata_file: str | None = None
+    frequency_file: str | None = None
+    solvent_map: str | None = None
+    optimizer: OptimizerConfig | None = None
+    scf: SCFConfig | None = None
+    single_point: SinglePointConfig | None = None
+    frequency: FrequencyConfig | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "RunConfig":
+        if not isinstance(data, dict):
+            raise ValueError("Config must be a JSON object.")
+        frequency_block = data.get("frequency")
+        if not frequency_block:
+            frequency_block = data.get("freq")
+        return cls(
+            raw=dict(data),
+            threads=data.get("threads"),
+            memory_gb=data.get("memory_gb"),
+            basis=data.get("basis"),
+            xc=data.get("xc"),
+            solvent=data.get("solvent"),
+            solvent_model=data.get("solvent_model"),
+            dispersion=data.get("dispersion"),
+            calculation_mode=data.get("calculation_mode"),
+            enforce_os_memory_limit=data.get("enforce_os_memory_limit"),
+            verbose=data.get("verbose"),
+            single_point_enabled=data.get("single_point_enabled"),
+            frequency_enabled=data.get("frequency_enabled"),
+            log_file=data.get("log_file"),
+            event_log_file=data.get("event_log_file"),
+            optimized_xyz_file=data.get("optimized_xyz_file"),
+            run_metadata_file=data.get("run_metadata_file"),
+            frequency_file=data.get("frequency_file"),
+            solvent_map=data.get("solvent_map"),
+            optimizer=OptimizerConfig.from_dict(data.get("optimizer")),
+            scf=SCFConfig.from_dict(data.get("scf")),
+            single_point=SinglePointConfig.from_dict(data.get("single_point")),
+            frequency=FrequencyConfig.from_dict(frequency_block),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
 
 
 def load_run_config(config_path):
@@ -407,3 +626,8 @@ def validate_run_config(config):
                 "dispersion_model": (is_str, "Config '{name}' must be a string."),
             }
             _validate_fields(config[frequency_key], frequency_rules, prefix=f"{frequency_key}.")
+
+
+def build_run_config(config):
+    validate_run_config(config)
+    return RunConfig.from_dict(config)

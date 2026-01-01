@@ -9,8 +9,8 @@ from .run_opt_config import (
     DEFAULT_QUEUE_PATH,
     DEFAULT_QUEUE_RUNNER_LOCK_PATH,
     DEFAULT_RUN_METADATA_PATH,
+    build_run_config,
     load_run_config,
-    validate_run_config,
 )
 
 
@@ -105,7 +105,7 @@ def main():
             config_source_path = config_path
 
         try:
-            validate_run_config(config)
+            config = build_run_config(config)
         except ValueError as error:
             message = str(error)
             print(message, file=sys.stderr)

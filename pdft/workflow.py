@@ -40,6 +40,7 @@ from .run_opt_config import (
     DEFAULT_RUN_METADATA_PATH,
     DEFAULT_SOLVENT_MAP_PATH,
     DEFAULT_THREAD_COUNT,
+    RunConfig,
     load_solvent_map,
 )
 from .run_opt_logging import ensure_stream_newlines, setup_logging
@@ -270,26 +271,33 @@ def run_doctor():
     print("OK  all checks passed")
 
 
-def run(args, config, config_raw, config_source_path, run_in_background):
-    calculation_mode = _normalize_calculation_mode(config.get("calculation_mode"))
-    basis = config.get("basis")
-    xc = normalize_xc_functional(config.get("xc"))
-    solvent_name = config.get("solvent")
-    solvent_model = config.get("solvent_model")
-    dispersion_model = config.get("dispersion")
-    optimizer_config = config.get("optimizer") or {}
+def run(args, config: RunConfig, config_raw, config_source_path, run_in_background):
+    config_dict = config.to_dict()
+    calculation_mode = _normalize_calculation_mode(config.calculation_mode)
+    basis = config.basis
+    xc = normalize_xc_functional(config.xc)
+    solvent_name = config.solvent
+    solvent_model = config.solvent_model
+    dispersion_model = config.dispersion
+    optimizer_config = config.optimizer
+    optimizer_ase_config = optimizer_config.ase if optimizer_config else None
+    optimizer_ase_dict = optimizer_ase_config.to_dict() if optimizer_ase_config else {}
     optimizer_mode = None
     if calculation_mode == "optimization":
-        optimizer_mode = _normalize_optimizer_mode(optimizer_config.get("mode"))
-    solvent_map_path = config.get("solvent_map", DEFAULT_SOLVENT_MAP_PATH)
-    single_point_config = config.get("single_point") or {}
-    frequency_enabled = config.get("frequency_enabled")
-    single_point_enabled = config.get("single_point_enabled", True)
+        optimizer_mode = _normalize_optimizer_mode(
+            optimizer_config.mode if optimizer_config else None
+        )
+    solvent_map_path = config.solvent_map or DEFAULT_SOLVENT_MAP_PATH
+    single_point_config = config.single_point
+    frequency_enabled = config.frequency_enabled
+    single_point_enabled = config.single_point_enabled
     if calculation_mode != "optimization":
         frequency_enabled = False
         single_point_enabled = False
     if frequency_enabled is None and calculation_mode == "optimization":
         frequency_enabled = True
+    if single_point_enabled is None:
+        single_point_enabled = True
     if not basis:
         raise ValueError("Config must define 'basis' in the JSON config file.")
     if not xc:
@@ -301,22 +309,22 @@ def run(args, config, config_raw, config_source_path, run_in_background):
             raise ValueError("Config must define 'solvent_model' when 'solvent' is set.")
         if solvent_model and solvent_model.lower() not in ("pcm", "smd"):
             raise ValueError("Config 'solvent_model' must be one of: pcm, smd.")
-    thread_count = config.get("threads", DEFAULT_THREAD_COUNT)
-    memory_gb = config.get("memory_gb")
-    verbose = bool(config.get("verbose", False))
+    thread_count = config.threads if config.threads is not None else DEFAULT_THREAD_COUNT
+    memory_gb = config.memory_gb
+    verbose = bool(config.verbose)
     run_dir = args.run_dir or create_run_directory()
     os.makedirs(run_dir, exist_ok=True)
-    log_path = resolve_run_path(run_dir, config.get("log_file", DEFAULT_LOG_PATH))
+    log_path = resolve_run_path(run_dir, config.log_file or DEFAULT_LOG_PATH)
     log_path = format_log_path(log_path)
-    scf_config = config.get("scf", {})
+    scf_config = config.scf.to_dict() if config.scf else {}
     optimized_xyz_path = resolve_run_path(
-        run_dir, config.get("optimized_xyz_file", DEFAULT_OPTIMIZED_XYZ_PATH)
+        run_dir, config.optimized_xyz_file or DEFAULT_OPTIMIZED_XYZ_PATH
     )
     run_metadata_path = resolve_run_path(
-        run_dir, config.get("run_metadata_file", DEFAULT_RUN_METADATA_PATH)
+        run_dir, config.run_metadata_file or DEFAULT_RUN_METADATA_PATH
     )
     frequency_output_path = resolve_run_path(
-        run_dir, config.get("frequency_file", DEFAULT_FREQUENCY_PATH)
+        run_dir, config.frequency_file or DEFAULT_FREQUENCY_PATH
     )
     ensure_parent_dir(log_path)
     ensure_parent_dir(optimized_xyz_path)
@@ -332,7 +340,7 @@ def run(args, config, config_raw, config_source_path, run_in_background):
 
     run_id = args.run_id or str(uuid.uuid4())
     event_log_path = resolve_run_path(
-        run_dir, config.get("event_log_file", DEFAULT_EVENT_LOG_PATH)
+        run_dir, config.event_log_file or DEFAULT_EVENT_LOG_PATH
     )
     if event_log_path:
         event_log_path = format_log_path(event_log_path)
@@ -438,7 +446,7 @@ def run(args, config, config_raw, config_source_path, run_in_background):
         thread_status = apply_thread_settings(thread_count)
         openmp_available = thread_status.get("openmp_available")
         effective_threads = thread_status.get("effective_threads")
-        enforce_os_memory_limit = config.get("enforce_os_memory_limit", False)
+        enforce_os_memory_limit = bool(config.enforce_os_memory_limit)
         memory_mb, memory_limit_status = apply_memory_limit(memory_gb, enforce_os_memory_limit)
         memory_limit_enforced = bool(memory_limit_status and memory_limit_status.get("applied"))
 
@@ -562,16 +570,36 @@ def run(args, config, config_raw, config_source_path, run_in_background):
         if calculation_mode == "optimization":
             applied_scf = apply_scf_settings(mf, scf_config)
 
-        sp_basis = single_point_config.get("basis") or basis
-        sp_xc = normalize_xc_functional(single_point_config.get("xc") or xc)
-        sp_scf_config = single_point_config.get("scf") or scf_config
-        sp_solvent_name = single_point_config.get("solvent") or solvent_name
-        sp_solvent_model = single_point_config.get("solvent_model") or solvent_model
-        if "dispersion" in single_point_config:
-            sp_dispersion_model = single_point_config.get("dispersion")
+        sp_basis = (
+            single_point_config.basis if single_point_config and single_point_config.basis else basis
+        )
+        sp_xc = normalize_xc_functional(
+            single_point_config.xc if single_point_config and single_point_config.xc else xc
+        )
+        sp_scf_config = (
+            single_point_config.scf.to_dict()
+            if single_point_config and single_point_config.scf
+            else scf_config
+        )
+        sp_solvent_name = (
+            single_point_config.solvent
+            if single_point_config and single_point_config.solvent
+            else solvent_name
+        )
+        sp_solvent_model = (
+            single_point_config.solvent_model
+            if single_point_config and single_point_config.solvent_model
+            else solvent_model
+        )
+        if single_point_config and "dispersion" in single_point_config.raw:
+            sp_dispersion_model = single_point_config.dispersion
         else:
             sp_dispersion_model = dispersion_model
-        sp_solvent_map_path = single_point_config.get("solvent_map") or solvent_map_path
+        sp_solvent_map_path = (
+            single_point_config.solvent_map
+            if single_point_config and single_point_config.solvent_map
+            else solvent_map_path
+        )
         if not sp_basis:
             raise ValueError(
                 "Single-point config must define 'basis' or fall back to base 'basis'."
@@ -622,14 +650,12 @@ def run(args, config, config_raw, config_source_path, run_in_background):
             sp_solvent_model,
         )
 
-        frequency_config = config.get("frequency") or config.get("freq") or {}
-        if not isinstance(frequency_config, dict):
-            raise ValueError("Config 'frequency' (or 'freq') must be an object.")
+        frequency_config = config.frequency
         freq_dispersion_mode = _normalize_frequency_dispersion_mode(
-            frequency_config.get("dispersion")
+            frequency_config.dispersion if frequency_config else None
         )
-        if "dispersion_model" in frequency_config:
-            freq_dispersion_raw = frequency_config.get("dispersion_model")
+        if frequency_config and "dispersion_model" in frequency_config.raw:
+            freq_dispersion_raw = frequency_config.dispersion_model
         else:
             freq_dispersion_raw = sp_dispersion_model
 
@@ -787,7 +813,7 @@ def run(args, config, config_raw, config_source_path, run_in_background):
                 "frequency_file": frequency_output_path,
                 "run_metadata_file": run_metadata_path,
                 "config_file": args.config,
-                "config": config,
+                "config": config_dict,
                 "config_raw": config_raw,
                 "config_hash": compute_text_hash(config_raw),
                 "scf_config": calc_scf_config,
@@ -1067,8 +1093,8 @@ def run(args, config, config_raw, config_source_path, run_in_background):
                 "frequency_dispersion_mode": freq_dispersion_mode if frequency_enabled else None,
                 "optimizer": {
                     "mode": optimizer_mode,
-                    "output_xyz": optimizer_config.get("output_xyz"),
-                    "ase": optimizer_config.get("ase"),
+                    "output_xyz": optimizer_config.output_xyz if optimizer_config else None,
+                    "ase": optimizer_ase_dict or None,
                 },
                 "single_point": {
                     "basis": sp_basis,
@@ -1102,7 +1128,7 @@ def run(args, config, config_raw, config_source_path, run_in_background):
                 "frequency_file": frequency_output_path,
                 "run_metadata_file": run_metadata_path,
                 "config_file": args.config,
-                "config": config,
+                "config": config_dict,
                 "config_raw": config_raw,
                 "config_hash": compute_text_hash(config_raw),
                 "scf_config": scf_config,
@@ -1155,7 +1181,9 @@ def run(args, config, config_raw, config_source_path, run_in_background):
             input_xyz_path = resolve_run_path(run_dir, input_xyz_name)
             if os.path.abspath(args.xyz_file) != os.path.abspath(input_xyz_path):
                 shutil.copy2(args.xyz_file, input_xyz_path)
-            output_xyz_setting = optimizer_config.get("output_xyz") or "ase_optimized.xyz"
+            output_xyz_setting = (
+                optimizer_config.output_xyz if optimizer_config else None
+            ) or "ase_optimized.xyz"
             output_xyz_path = resolve_run_path(run_dir, output_xyz_setting)
             ensure_parent_dir(output_xyz_path)
             n_steps_value = _run_ase_optimizer(
@@ -1174,7 +1202,7 @@ def run(args, config, config_raw, config_source_path, run_in_background):
                 dispersion_model,
                 verbose,
                 memory_mb,
-                optimizer_config.get("ase") or {},
+                optimizer_ase_dict,
                 optimizer_mode,
                 step_callback=_step_callback,
             )
