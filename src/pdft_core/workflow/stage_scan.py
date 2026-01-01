@@ -17,6 +17,7 @@ from ..run_opt_metadata import (
 )
 from ..run_opt_resources import collect_environment_snapshot, resolve_run_path
 from .events import finalize_metadata
+from .types import MoleculeContext, RunContext
 from .utils import (
     _apply_scan_geometry,
     _atoms_to_atom_spec,
@@ -29,8 +30,8 @@ from .utils import (
 
 def run_scan_stage(
     args,
-    context,
-    molecule_context,
+    context: RunContext,
+    molecule_context: MoleculeContext,
     memory_mb,
     memory_limit_status,
     memory_limit_enforced,

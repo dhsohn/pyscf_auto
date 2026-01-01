@@ -14,9 +14,10 @@ from ..run_opt_config import (
     DEFAULT_QUEUE_RUNNER_LOG_PATH,
 )
 from ..run_opt_metadata import write_run_metadata
+from .types import RunContext
 
 
-def enqueue_background_run(args, context):
+def enqueue_background_run(args, context: RunContext):
     queued_at = datetime.now().isoformat()
     queue_priority = args.queue_priority
     max_runtime_seconds = args.queue_max_runtime
