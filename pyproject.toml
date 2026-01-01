@@ -13,8 +13,11 @@ dependencies = ["jsonschema>=4.18"]
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
 
+[project.scripts]
+pdft = "pdft.run_opt:main"
+
 [tool.setuptools]
-packages = ["core"]
+packages = ["core", "pdft"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B"]
