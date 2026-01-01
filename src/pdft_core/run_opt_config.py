@@ -116,6 +116,7 @@ RUN_CONFIG_SCHEMA = {
                 "level_shift": {"type": ["number", "integer", "null"]},
                 "damping": {"type": ["number", "integer", "null"]},
                 "diis": {"type": ["boolean", "integer", "null"]},
+                "chkfile": {"type": ["string", "null"]},
                 "force_restricted": {"type": ["boolean", "null"]},
                 "force_unrestricted": {"type": ["boolean", "null"]},
             },
@@ -140,6 +141,7 @@ RUN_CONFIG_SCHEMA = {
                         "level_shift": {"type": ["number", "integer", "null"]},
                         "damping": {"type": ["number", "integer", "null"]},
                         "diis": {"type": ["boolean", "integer", "null"]},
+                        "chkfile": {"type": ["string", "null"]},
                         "force_restricted": {"type": ["boolean", "null"]},
                         "force_unrestricted": {"type": ["boolean", "null"]},
                     },
@@ -303,12 +305,12 @@ RUN_CONFIG_EXAMPLES = {
     "optimizer.ase": "\"ase\": {\"d3_backend\": \"dftd3\", \"d3_command\": null}",
     "optimizer.ase.d3_backend": "\"d3_backend\": \"dftd3\"",
     "optimizer.ase.d3_command_validate": "\"d3_command_validate\": true",
-    "scf": "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8}",
+    "scf": "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8, \"chkfile\": \"scf.chk\"}",
     "single_point": (
         "\"single_point\": {\"basis\": \"def2-svp\", \"xc\": \"b3lyp\", "
         "\"solvent\": \"water\", \"dispersion\": \"d3bj\"}"
     ),
-    "single_point.scf": "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8}",
+    "single_point.scf": "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8, \"chkfile\": \"scf.chk\"}",
     "frequency": "\"frequency\": {\"dispersion\": \"d3bj\", \"dispersion_model\": \"d3bj\"}",
     "freq": "\"freq\": {\"dispersion\": \"d3bj\", \"dispersion_model\": \"d3bj\"}",
     "thermo": "\"thermo\": {\"T\": 298.15, \"P\": 1.0, \"unit\": \"atm\"}",
@@ -1086,6 +1088,7 @@ def validate_run_config(config):
             "level_shift": (is_number, "Config '{name}' must be a number (int or float)."),
             "damping": (is_number, "Config '{name}' must be a number (int or float)."),
             "diis": (is_diis, "Config '{name}' must be a boolean or integer."),
+            "chkfile": (is_str, "Config '{name}' must be a string path."),
             "force_restricted": (is_bool, "Config '{name}' must be a boolean."),
             "force_unrestricted": (is_bool, "Config '{name}' must be a boolean."),
         }
@@ -1115,6 +1118,7 @@ def validate_run_config(config):
                 "level_shift": (is_number, "Config '{name}' must be a number (int or float)."),
                 "damping": (is_number, "Config '{name}' must be a number (int or float)."),
                 "diis": (is_diis, "Config '{name}' must be a boolean or integer."),
+                "chkfile": (is_str, "Config '{name}' must be a string path."),
                 "force_restricted": (is_bool, "Config '{name}' must be a boolean."),
                 "force_unrestricted": (is_bool, "Config '{name}' must be a boolean."),
             }
