@@ -21,6 +21,7 @@ DEFAULT_FREQUENCY_PATH = "frequency_result.json"
 DEFAULT_IRC_PATH = "irc_result.json"
 DEFAULT_IRC_PROFILE_CSV_PATH = "irc_profile.csv"
 DEFAULT_RUN_METADATA_PATH = "metadata.json"
+DEFAULT_QCSCHEMA_OUTPUT_PATH = "qcschema_result.json"
 DEFAULT_SCAN_RESULT_PATH = "scan_result.json"
 DEFAULT_SCAN_RESULT_CSV_PATH = "scan_result.csv"
 DEFAULT_QUEUE_PATH = "runs/queue.json"
@@ -66,6 +67,7 @@ RUN_CONFIG_SCHEMA = {
         "irc_file": {"type": ["string", "null"]},
         "irc_profile_csv_file": {"type": ["string", "null"]},
         "scan_result_csv_file": {"type": ["string", "null"]},
+        "qcschema_output_file": {"type": ["string", "null"]},
         "irc": {
             "type": ["object", "null"],
             "required": [],
@@ -307,6 +309,7 @@ RUN_CONFIG_EXAMPLES = {
     "calculation_mode": "\"calculation_mode\": \"optimization\"",
     "irc_enabled": "\"irc_enabled\": true",
     "irc": "\"irc\": {\"steps\": 10, \"step_size\": 0.05, \"force_threshold\": 0.01}",
+    "qcschema_output_file": "\"qcschema_output_file\": \"qcschema_result.json\"",
     "optimizer": (
         "\"optimizer\": {\"mode\": \"minimum\", \"output_xyz\": \"ase_optimized.xyz\", "
         "\"ase\": {\"d3_params\": {\"damping\": {\"s6\": 1.0}}, \"optimizer\": \"bfgs\"}}"
@@ -557,6 +560,7 @@ class RunConfig:
     event_log_file: str | None = None
     optimized_xyz_file: str | None = None
     run_metadata_file: str | None = None
+    qcschema_output_file: str | None = None
     frequency_file: str | None = None
     irc_file: str | None = None
     irc_profile_csv_file: str | None = None
@@ -598,6 +602,7 @@ class RunConfig:
             event_log_file=data.get("event_log_file"),
             optimized_xyz_file=data.get("optimized_xyz_file"),
             run_metadata_file=data.get("run_metadata_file"),
+            qcschema_output_file=data.get("qcschema_output_file"),
             frequency_file=data.get("frequency_file"),
             irc_file=data.get("irc_file"),
             irc_profile_csv_file=data.get("irc_profile_csv_file"),
@@ -976,6 +981,7 @@ def validate_run_config(config):
         "event_log_file": (is_str, "Config '{name}' must be a string path."),
         "optimized_xyz_file": (is_str, "Config '{name}' must be a string path."),
         "run_metadata_file": (is_str, "Config '{name}' must be a string path."),
+        "qcschema_output_file": (is_str, "Config '{name}' must be a string path."),
         "frequency_file": (is_str, "Config '{name}' must be a string path."),
         "irc_file": (is_str, "Config '{name}' must be a string path."),
         "irc_profile_csv_file": (is_str, "Config '{name}' must be a string path."),

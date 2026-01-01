@@ -10,6 +10,7 @@ from ..run_opt_config import (
     DEFAULT_IRC_PROFILE_CSV_PATH,
     DEFAULT_LOG_PATH,
     DEFAULT_OPTIMIZED_XYZ_PATH,
+    DEFAULT_QCSCHEMA_OUTPUT_PATH,
     DEFAULT_RUN_METADATA_PATH,
     DEFAULT_SCAN_RESULT_CSV_PATH,
     DEFAULT_SCAN_RESULT_PATH,
@@ -110,6 +111,9 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     run_metadata_path = resolve_run_path(
         run_dir, config.run_metadata_file or DEFAULT_RUN_METADATA_PATH
     )
+    qcschema_output_path = resolve_run_path(
+        run_dir, config.qcschema_output_file or DEFAULT_QCSCHEMA_OUTPUT_PATH
+    )
     frequency_output_path = resolve_run_path(
         run_dir, config.frequency_file or DEFAULT_FREQUENCY_PATH
     )
@@ -124,6 +128,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     ensure_parent_dir(log_path)
     ensure_parent_dir(optimized_xyz_path)
     ensure_parent_dir(run_metadata_path)
+    ensure_parent_dir(qcschema_output_path)
     ensure_parent_dir(frequency_output_path)
     ensure_parent_dir(irc_output_path)
     ensure_parent_dir(irc_profile_csv_path)
@@ -210,6 +215,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
         "scf_config": scf_config,
         "optimized_xyz_path": optimized_xyz_path,
         "run_metadata_path": run_metadata_path,
+        "qcschema_output_path": qcschema_output_path,
         "frequency_output_path": frequency_output_path,
         "irc_output_path": irc_output_path,
         "irc_profile_csv_path": irc_profile_csv_path,

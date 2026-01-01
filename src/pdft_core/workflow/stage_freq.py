@@ -3,6 +3,7 @@ import logging
 import time
 
 from ..run_opt_engine import compute_frequencies
+from ..qcschema_export import export_qcschema_result
 from .events import finalize_metadata
 from .utils import (
     _frequency_units,
@@ -93,6 +94,12 @@ def run_frequency_stage(stage_context, queue_update_fn):
             pyscf_chkfile=stage_context.get("pyscf_chkfile"),
             scf_energy=frequency_result.get("energy"),
             scf_converged=frequency_result.get("converged"),
+        )
+        export_qcschema_result(
+            stage_context.get("qcschema_output_path"),
+            calculation_metadata,
+            stage_context.get("input_xyz"),
+            frequency_payload=frequency_payload,
         )
         finalize_metadata(
             stage_context["run_metadata_path"],

@@ -15,6 +15,7 @@ from ..run_opt_engine import (
     load_xyz,
     run_capability_check,
 )
+from ..qcschema_export import export_qcschema_result
 from ..run_opt_logging import ensure_stream_newlines
 from ..run_opt_metadata import (
     build_run_summary,
@@ -245,6 +246,7 @@ def run_optimization_stage(
         "irc_file": irc_output_path,
         "irc_profile_csv_file": context["irc_profile_csv_path"],
         "run_metadata_file": run_metadata_path,
+        "qcschema_output_file": context.get("qcschema_output_path"),
         "config_file": args.config,
         "config": context["config_dict"],
         "config_raw": context["config_raw"],
@@ -455,6 +457,8 @@ def run_optimization_stage(
     n_steps_value = n_steps["value"] if n_steps_source else None
     imaginary_count = None
     frequency_payload = None
+    irc_payload = None
+    sp_result = None
     if frequency_enabled:
         logging.info("Calculating harmonic frequencies for optimized geometry...")
         try:
@@ -760,6 +764,14 @@ def run_optimization_stage(
         scf_converged=last_scf_converged,
     )
     write_run_metadata(run_metadata_path, optimization_metadata)
+    export_qcschema_result(
+        context.get("qcschema_output_path"),
+        optimization_metadata,
+        args.xyz_file,
+        frequency_payload=frequency_payload,
+        irc_payload=irc_payload,
+        sp_result=sp_result,
+    )
     record_status_event(
         event_log_path,
         run_id,

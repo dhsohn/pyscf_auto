@@ -424,6 +424,11 @@ python -m pytest tests
 - `ase_opt.traj` 또는 `ts_opt.traj`: ASE trajectory (옵티마이저 설정에 따라)
 - `frequency_result.json`: 프리퀀시 결과(실행한 경우)
 - `irc_result.json`: IRC 결과(IRC 모드 또는 IRC 후속 계산 실행 시)
+- `qcschema_result.json`: QCSchema AtomicResult 요약(실행 완료 시)
+  - `schema_name`, `schema_version`: QCSchema 버전 정보
+  - `molecule`: 입력 구조(원소/좌표/전하/다중도)
+  - `return_result`: 최종 에너지(Hartree)
+  - `extras.pdft`: 계산 메타데이터와 stage 결과 스냅샷
 - `irc_profile.csv`: IRC 경로 에너지 프로파일 CSV
   - `direction`: forward/reverse 방향
   - `step`: 스텝 인덱스
@@ -486,6 +491,7 @@ python -m pytest tests
 ### IRC 관련
 - `irc_enabled`: `true|false` (최적화 모드에서 IRC 후속 계산을 강제)
 - `irc_file`: IRC 결과 파일 경로(기본값: `irc_result.json`)
+- `qcschema_output_file`: QCSchema 결과 파일 경로(기본값: `qcschema_result.json`)
 - `irc_profile_csv_file`: IRC 프로파일 CSV 경로(기본값: `irc_profile.csv`)
 - `irc.steps`, `irc.step_size`, `irc.force_threshold`: IRC 경로 추적 설정
 

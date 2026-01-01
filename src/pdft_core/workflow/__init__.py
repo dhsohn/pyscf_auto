@@ -164,6 +164,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
     log_path = context["log_path"]
     scf_config = context["scf_config"]
     run_metadata_path = context["run_metadata_path"]
+    qcschema_output_path = context["qcschema_output_path"]
     frequency_output_path = context["frequency_output_path"]
     event_log_path = context["event_log_path"]
     run_id = context["run_id"]
@@ -566,6 +567,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                     "irc_file": context["irc_output_path"],
                     "irc_profile_csv_file": context["irc_profile_csv_path"],
                     "run_metadata_file": run_metadata_path,
+                    "qcschema_output_file": qcschema_output_path,
                     "config_file": args.config,
                     "config": config_dict,
                     "config_raw": config_raw,
@@ -617,6 +619,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                     "frequency_output_path": frequency_output_path,
                     "irc_output_path": context["irc_output_path"],
                     "irc_profile_csv_path": context["irc_profile_csv_path"],
+                    "qcschema_output_path": qcschema_output_path,
                     "input_xyz": args.xyz_file,
                     "charge": charge,
                     "spin": spin,
