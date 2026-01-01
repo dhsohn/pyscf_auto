@@ -28,6 +28,7 @@ from ..run_opt_metadata import (
     write_run_metadata,
 )
 from ..run_opt_resources import collect_environment_snapshot, ensure_parent_dir, resolve_run_path
+from .types import MoleculeContext, RunContext
 from .utils import (
     _atoms_to_atom_spec,
     _frequency_units,
@@ -38,8 +39,8 @@ from .utils import (
 
 def run_optimization_stage(
     args,
-    context,
-    molecule_context,
+    context: RunContext,
+    molecule_context: MoleculeContext,
     memory_mb,
     memory_limit_status,
     memory_limit_enforced,

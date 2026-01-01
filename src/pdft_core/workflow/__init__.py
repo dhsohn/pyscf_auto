@@ -45,6 +45,7 @@ from .stage_irc import run_irc_stage
 from .stage_opt import run_optimization_stage
 from .stage_scan import run_scan_stage
 from .stage_sp import run_single_point_stage
+from .types import RunContext
 from .utils import (
     _is_vacuum_solvent,
     _normalize_dispersion_settings,
@@ -143,7 +144,7 @@ def run_doctor():
 
 
 def run(args, config: RunConfig, config_raw, config_source_path, run_in_background):
-    context = prepare_run_context(args, config, config_raw)
+    context: RunContext = prepare_run_context(args, config, config_raw)
     calculation_mode = context["calculation_mode"]
     config_dict = context["config_dict"]
     basis = context["basis"]

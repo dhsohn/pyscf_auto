@@ -28,6 +28,7 @@ from ..run_opt_resources import (
     format_log_path,
     resolve_run_path,
 )
+from .types import MoleculeContext, RunContext
 from .utils import (
     _is_vacuum_solvent,
     _normalize_calculation_mode,
@@ -40,7 +41,7 @@ from .utils import (
 )
 
 
-def prepare_run_context(args, config: RunConfig, config_raw):
+def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     config_dict = config.to_dict()
     calculation_mode = _normalize_calculation_mode(config.calculation_mode)
     basis = config.basis
@@ -215,7 +216,7 @@ def prepare_run_context(args, config: RunConfig, config_raw):
     }
 
 
-def build_molecule_context(args, context, memory_mb):
+def build_molecule_context(args, context: RunContext, memory_mb) -> MoleculeContext:
     from pyscf import dft, gto
 
     atom_spec, charge, spin, multiplicity = load_xyz(args.xyz_file)
