@@ -1,14 +1,16 @@
 import json
 import os
+from importlib import resources
 from pathlib import Path
 
 from .run_opt_chemistry import normalize_xc_functional
 from .run_opt_config import DEFAULT_SOLVENT_MAP_PATH, load_run_config, load_solvent_map
 
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
-INTERACTIVE_CONFIG_MINIMUM = _SCRIPT_DIR / "run_config_ase.json"
-INTERACTIVE_CONFIG_TS = _SCRIPT_DIR / "run_config_ts.json"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_ASSET_ROOT = resources.files("pdft.assets")
+INTERACTIVE_CONFIG_MINIMUM = _ASSET_ROOT / "run_config_ase.json"
+INTERACTIVE_CONFIG_TS = _ASSET_ROOT / "run_config_ts.json"
 BASIS_SET_OPTIONS = [
     "6-31g",
     "6-31g*",
@@ -33,6 +35,16 @@ CALCULATION_MODE_OPTIONS = [
     "단일점 에너지 계산",
     "프리퀀시 계산",
 ]
+
+
+def _resolve_interactive_config_path(filename: str) -> Path | None:
+    asset_path = _ASSET_ROOT / filename
+    if asset_path.is_file():
+        return Path(asset_path)
+    fallback_path = _REPO_ROOT / filename
+    if fallback_path.is_file():
+        return fallback_path
+    return None
 
 
 def _prompt_choice(prompt, options, allow_custom=False, default_value=None):
@@ -93,6 +105,20 @@ def _prompt_interactive_config(args):
             base_config_path = INTERACTIVE_CONFIG_MINIMUM
     else:
         base_config_path = INTERACTIVE_CONFIG_MINIMUM
+
+    config_filename = base_config_path.name
+    base_config_path = _resolve_interactive_config_path(config_filename)
+    if base_config_path is None or not base_config_path.is_file():
+        expected_assets = _ASSET_ROOT / config_filename
+        expected_repo = _REPO_ROOT / config_filename
+        expected_paths = [
+            str(path) for path in (expected_assets, expected_repo) if path is not None
+        ]
+        hint = ", ".join(expected_paths) if expected_paths else "run_config_ase.json"
+        raise FileNotFoundError(
+            "인터랙티브 기본 설정 파일을 찾을 수 없습니다. "
+            f"다음 경로 중 하나에 파일이 있어야 합니다: {hint}"
+        )
 
     config, _ = load_run_config(base_config_path)
     if not isinstance(config, dict):
