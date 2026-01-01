@@ -560,6 +560,53 @@ def _normalize_stage_flags(config, calculation_mode):
     return frequency_enabled, single_point_enabled
 
 
+def _read_json_file(path):
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _resolve_run_identity(resume_dir, run_metadata_path, checkpoint_path, override_run_id=None):
+    run_id = override_run_id
+    run_id_history = []
+    attempt = 1
+    existing_metadata = _read_json_file(run_metadata_path) if resume_dir else None
+    existing_checkpoint = _read_json_file(checkpoint_path) if resume_dir else None
+    existing_run_id = None
+    if existing_metadata and existing_metadata.get("run_id"):
+        existing_run_id = existing_metadata.get("run_id")
+    elif existing_checkpoint and existing_checkpoint.get("run_id"):
+        existing_run_id = existing_checkpoint.get("run_id")
+    for source in (existing_metadata, existing_checkpoint):
+        if not isinstance(source, dict):
+            continue
+        history = source.get("run_id_history")
+        if isinstance(history, list):
+            for item in history:
+                if item and item not in run_id_history:
+                    run_id_history.append(item)
+    if resume_dir:
+        prior_attempt = None
+        for source in (existing_metadata, existing_checkpoint):
+            if not isinstance(source, dict):
+                continue
+            candidate = source.get("attempt")
+            if isinstance(candidate, int) and not isinstance(candidate, bool):
+                prior_attempt = candidate
+                break
+        if run_id is None:
+            run_id = existing_run_id
+        if existing_run_id and run_id and existing_run_id != run_id:
+            if existing_run_id not in run_id_history:
+                run_id_history.append(existing_run_id)
+        attempt = (prior_attempt or 1) + 1
+    return run_id, run_id_history, attempt, existing_checkpoint
+
+
 def prepare_run_context(args, config: RunConfig, config_raw):
     config_dict = config.to_dict()
     calculation_mode = _normalize_calculation_mode(config.calculation_mode)
@@ -646,19 +693,41 @@ def prepare_run_context(args, config: RunConfig, config_raw):
             config_used_file.write(config_raw)
         args.config = config_used_path
 
-    run_id = args.run_id or str(uuid.uuid4())
-    args.run_id = run_id
     checkpoint_path = resolve_run_path(run_dir, "checkpoint.json")
+    run_id, run_id_history, attempt, checkpoint_payload = _resolve_run_identity(
+        resume_dir,
+        run_metadata_path,
+        checkpoint_path,
+        override_run_id=args.run_id,
+    )
+    if not run_id:
+        run_id = str(uuid.uuid4())
+    args.run_id = run_id
     if not resume_dir:
         checkpoint_payload = {
             "created_at": datetime.now().isoformat(),
             "run_dir": run_dir,
             "run_id": args.run_id,
+            "attempt": attempt,
+            "run_id_history": run_id_history,
             "xyz_file": os.path.abspath(args.xyz_file) if args.xyz_file else None,
             "config_source_path": str(args.config) if args.config else None,
             "config_raw": config_raw,
         }
         write_checkpoint(checkpoint_path, checkpoint_payload)
+    elif checkpoint_payload is not None:
+        updated = False
+        if checkpoint_payload.get("run_id") != run_id:
+            checkpoint_payload["run_id"] = run_id
+            updated = True
+        if checkpoint_payload.get("attempt") != attempt:
+            checkpoint_payload["attempt"] = attempt
+            updated = True
+        if run_id_history and checkpoint_payload.get("run_id_history") != run_id_history:
+            checkpoint_payload["run_id_history"] = run_id_history
+            updated = True
+        if updated:
+            write_checkpoint(checkpoint_path, checkpoint_payload)
     elif pyscf_chkfile:
         _warn_missing_chkfile("Resume mode:", pyscf_chkfile)
 
@@ -702,6 +771,8 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         "scan_result_path": scan_result_path,
         "event_log_path": event_log_path,
         "run_id": run_id,
+        "attempt": attempt,
+        "run_id_history": run_id_history,
         "resume_dir": resume_dir,
         "pyscf_chkfile": pyscf_chkfile,
         "irc_enabled": irc_enabled,
@@ -719,6 +790,8 @@ def _enqueue_background_run(args, context):
         "status": "queued",
         "run_directory": context["run_dir"],
         "run_id": context["run_id"],
+        "attempt": context["attempt"],
+        "run_id_history": context["run_id_history"],
         "xyz_file": args.xyz_file,
         "config_file": args.config,
         "run_metadata_file": context["run_metadata_path"],
@@ -733,6 +806,8 @@ def _enqueue_background_run(args, context):
         "status": "queued",
         "run_directory": context["run_dir"],
         "run_id": context["run_id"],
+        "attempt": context["attempt"],
+        "run_id_history": context["run_id_history"],
         "xyz_file": args.xyz_file,
         "config_file": args.config,
         "solvent_map": args.solvent_map,
@@ -1245,6 +1320,8 @@ def run_scan_stage(
         "run_directory": run_dir,
         "run_started_at": datetime.now().isoformat(),
         "run_id": run_id,
+        "attempt": context["attempt"],
+        "run_id_history": context["run_id_history"],
         "pid": os.getpid(),
         "xyz_file": args.xyz_file,
         "xyz_file_hash": compute_file_hash(args.xyz_file),
@@ -1606,6 +1683,8 @@ def run_optimization_stage(
         "run_directory": run_dir,
         "run_started_at": datetime.now().isoformat(),
         "run_id": run_id,
+        "attempt": context["attempt"],
+        "run_id_history": context["run_id_history"],
         "pid": os.getpid(),
         "xyz_file": args.xyz_file,
         "xyz_file_hash": compute_file_hash(args.xyz_file),
@@ -2550,6 +2629,8 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                 "run_directory": run_dir,
                 "run_started_at": datetime.now().isoformat(),
                 "run_id": run_id,
+                "attempt": context["attempt"],
+                "run_id_history": context["run_id_history"],
                 "pid": os.getpid(),
                 "xyz_file": args.xyz_file,
                 "xyz_file_hash": compute_file_hash(args.xyz_file),
