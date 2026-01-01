@@ -43,6 +43,10 @@ PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **�
 - **단일점 에너지(SP)**: 최적화 구조에서 선택한 함수/기저/용매/분산으로 에너지 계산
 - **프리퀀시(진동수) 계산**: PySCF Hessian → harmonic analysis로 진동수(허수 진동수 포함) 산출  
   - 현재 구현은 **Hessian에 분산보정(D3/D4)을 포함하지 않고**, 필요 시 **에너지 보정 항으로만** 더하는 모드가 기본입니다(설정에서 `"frequency_dispersion_mode": "none"`).
+- **IRC 계산**: TS 모드에서 허수 모드 벡터를 기반으로 반응 좌표를 추적(ASE 기반).  
+  - `irc_result.json`에 forward/reverse 경로와 에너지 프로파일이 저장됩니다.
+- **열화학(thermochemistry)**: 프리퀀시 결과로부터 ZPE/엔탈피/엔트로피/깁스 자유 에너지를 계산(옵션).  
+  - `thermo` 설정(T/P/단위)을 제공하면 `frequency_result.json`과 `metadata.json`에 함께 기록됩니다.
 
 ### 2) 용매 모델
 - `vacuum`(기본): 용매 처리 없음
@@ -191,6 +195,22 @@ TS 최적화를 위해서는 `run_config.json`에서 아래 값을 `transition_s
 }
 ```
 
+예: IRC 계산 모드(비-인터랙티브)
+```bash
+python run_opt.py input_ts.xyz --config run_config.json --non-interactive
+```
+```json
+{
+  "calculation_mode": "irc",
+  "optimizer": {
+    "mode": "transition_state",
+    "ase": { "optimizer": "sella", "sella": { "order": 1 } }
+  },
+  "irc_file": "irc_result.json",
+  "irc": { "steps": 10, "step_size": 0.05, "force_threshold": 0.01 }
+}
+```
+
 유용한 옵션:
 - `--run-dir <dir>`: 출력 폴더를 직접 지정
 - `--run-id <uuid>`: run id를 고정
@@ -289,12 +309,15 @@ python -m pytest tests
 - `optimized.xyz` / `<output_xyz>`: 최적화 결과 구조
 - `ase_opt.traj` 또는 `ts_opt.traj`: ASE trajectory (옵티마이저 설정에 따라)
 - `frequency_result.json`: 프리퀀시 결과(실행한 경우)
+- `irc_result.json`: IRC 결과(IRC 모드 또는 IRC 후속 계산 실행 시)
+- `irc_forward.xyz`, `irc_reverse.xyz`: IRC 경로 구조(ASE 출력)
 
 ---
 
 ## 설정 파일(JSON) 핵심 필드
 
 ### 공통
+- `calculation_mode`: `"optimization"`, `"single_point"`, `"frequency"`, `"irc"`
 - `threads`, `memory_gb`: 계산 리소스
 - `basis`, `xc`: 기저/함수
 - `dispersion`: `"d3bj"`, `"d3zero"`, `"d4"` 또는 `null`
@@ -314,6 +337,14 @@ python -m pytest tests
   - `optimizer.ase.d3_backend: "dftd3"`
   - `optimizer.ase.d3_command: null`
   - (선택) `optimizer.ase.d3_params.damping`: `s6, s8, a1, a2` 등
+
+### IRC 관련
+- `irc_enabled`: `true|false` (최적화 모드에서 IRC 후속 계산을 강제)
+- `irc_file`: IRC 결과 파일 경로(기본값: `irc_result.json`)
+- `irc.steps`, `irc.step_size`, `irc.force_threshold`: IRC 경로 추적 설정
+
+### 열화학(thermochemistry) 관련
+- `thermo.T`, `thermo.P`, `thermo.unit`: 온도/압력 설정(예: `"atm"`, `"bar"`, `"Pa"`)
 
 ---
 
