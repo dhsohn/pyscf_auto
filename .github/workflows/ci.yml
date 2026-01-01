@@ -21,6 +21,15 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install ".[dev]"
+      - name: Install runtime dependencies
+        run: |
+          set -e
+          if pip install ".[runtime]"; then
+            echo "Installed runtime extras."
+          else
+            echo "Runtime extras failed (possibly PySCF); checking requirements.txt instead."
+            pip install -r requirements.txt
+          fi
       - name: Lint
         run: ruff check .
       - name: Test
