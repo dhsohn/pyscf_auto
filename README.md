@@ -106,9 +106,9 @@ conda activate DFT
 conda install -c conda-forge \
   git make cmake ninja \
   openblas gcc clang llvm-openmp \
-  libxc xcfun libcint \
+  libxc xcfun libcint toml \
   h5py scipy numpy compilers \
-  ase toml dftd3-python dftd4
+  ase dftd3-python dftd4
 
 python -m pip install sella pytest jsonschema
 ```
