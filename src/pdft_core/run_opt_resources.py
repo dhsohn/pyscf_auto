@@ -1,7 +1,10 @@
+import hashlib
 import importlib
 import importlib.util
+import json
 import os
 import platform
+import subprocess
 import sys
 from datetime import datetime
 
@@ -167,7 +170,52 @@ def ensure_parent_dir(file_path):
         os.makedirs(parent, exist_ok=True)
 
 
+def _run_conda_command(args):
+    try:
+        completed = subprocess.run(
+            ["conda", *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return completed.stdout
+
+
+def _extract_conda_environment_name():
+    default_env = os.environ.get("CONDA_DEFAULT_ENV")
+    if default_env:
+        return default_env
+    info_output = _run_conda_command(["info", "--json"])
+    if not info_output:
+        return None
+    try:
+        info = json.loads(info_output)
+    except json.JSONDecodeError:
+        return None
+    env_name = info.get("active_prefix_name")
+    if env_name:
+        return env_name
+    active_prefix = info.get("active_prefix")
+    if not active_prefix:
+        return None
+    basename = os.path.basename(active_prefix.rstrip(os.sep))
+    return basename or None
+
+
+def _calculate_conda_list_export_sha256():
+    list_output = _run_conda_command(["list", "--export"])
+    if not list_output:
+        return None
+    return hashlib.sha256(list_output.encode("utf-8")).hexdigest()
+
+
 def collect_environment_snapshot(thread_count):
+    conda_snapshot = {
+        "name": _extract_conda_environment_name(),
+        "list_export_sha256": _calculate_conda_list_export_sha256(),
+    }
     return {
         "python_version": sys.version,
         "platform": platform.platform(),
@@ -178,4 +226,5 @@ def collect_environment_snapshot(thread_count):
         "processor": platform.processor(),
         "cpu_count": os.cpu_count(),
         "thread_count": thread_count,
+        "conda": conda_snapshot,
     }
