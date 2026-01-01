@@ -537,7 +537,7 @@ def _extract_imaginary_mode_from_hessian(hess, mol, atomic_masses, atomic_number
     }
 
 
-def _evaluate_internal_coordinate(kind, positions, i, j, k=None, l=None):
+def _evaluate_internal_coordinate(kind, positions, i, j, k=None, l_index=None):
     import numpy as np
 
     if kind == "bond":
@@ -555,7 +555,7 @@ def _evaluate_internal_coordinate(kind, positions, i, j, k=None, l=None):
         p0 = positions[i]
         p1 = positions[j]
         p2 = positions[k]
-        p3 = positions[l]
+        p3 = positions[l_index]
         b0 = p0 - p1
         b1 = p2 - p1
         b2 = p3 - p2
@@ -597,13 +597,13 @@ def _project_imaginary_mode_to_internal_coordinates(
         i = entry.get("i")
         j = entry.get("j")
         k = entry.get("k")
-        l = entry.get("l")
+        l_index = entry.get("l")
         target = entry.get("target")
         direction = entry.get("direction")
         tolerance = entry.get("tolerance")
-        current = _evaluate_internal_coordinate(kind, positions, i, j, k, l)
-        value_plus = _evaluate_internal_coordinate(kind, shifted_plus, i, j, k, l)
-        value_minus = _evaluate_internal_coordinate(kind, shifted_minus, i, j, k, l)
+        current = _evaluate_internal_coordinate(kind, positions, i, j, k, l_index)
+        value_plus = _evaluate_internal_coordinate(kind, shifted_plus, i, j, k, l_index)
+        value_minus = _evaluate_internal_coordinate(kind, shifted_minus, i, j, k, l_index)
         projection = (value_plus - value_minus) / (2 * projection_step)
         desired_sign = None
         alignment = None
@@ -633,7 +633,7 @@ def _project_imaginary_mode_to_internal_coordinates(
                 "i": i,
                 "j": j,
                 "k": k,
-                "l": l,
+                "l": l_index,
                 "current": current,
                 "target": target,
                 "delta_to_target": delta,
