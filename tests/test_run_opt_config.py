@@ -22,7 +22,7 @@ def test_concatenated_json_objects_report_extra_data(tmp_path):
 
     message = str(excinfo.value)
     assert "line 1 column 3" in message
-    assert "파일에 JSON 객체가 두 개 이상 있음" in message
+    assert "More than one JSON object detected in the file" in message
 
 
 def _has_key(mapping, key):

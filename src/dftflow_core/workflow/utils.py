@@ -24,14 +24,14 @@ def _normalize_dispersion_settings(stage_label, xc, dispersion_model, allow_disp
     normalized = str(dispersion_model).lower()
     if not allow_dispersion:
         logging.warning(
-            "%s 단계에서는 dispersion 입력을 지원하지 않습니다. '%s' 설정을 무시합니다.",
+            "%s stage does not support dispersion input; ignoring '%s' setting.",
             stage_label,
             dispersion_model,
         )
         return None
     if _xc_includes_dispersion(xc):
         logging.warning(
-            "%s XC '%s'에는 dispersion이 포함되어 있어 요청된 '%s'를 무시합니다.",
+            "%s XC '%s' already includes dispersion; ignoring requested '%s'.",
             stage_label,
             xc,
             normalized,
@@ -132,7 +132,7 @@ def _normalize_solvent_settings(stage_label, solvent_name, solvent_model):
     if _is_vacuum_solvent(solvent_name):
         if solvent_model:
             logging.warning(
-                "%s 단계에서 solvent '%s'는 vacuum으로 처리됩니다. solvent_model '%s'를 무시합니다.",
+                "%s stage treats solvent '%s' as vacuum; ignoring solvent_model '%s'.",
                 stage_label,
                 solvent_name,
                 solvent_model,
@@ -283,8 +283,6 @@ def _normalize_calculation_mode(mode_value):
         "geom",
         "structure",
         "structureoptimization",
-        "구조최적화",
-        "구조최적",
     ):
         return "optimization"
     if normalized in (
@@ -296,9 +294,6 @@ def _normalize_calculation_mode(mode_value):
         "single_point",
         "single",
         "sp",
-        "단일점",
-        "단일점에너지",
-        "단일점에너지계산",
     ):
         return "single_point"
     if normalized in (
@@ -307,8 +302,6 @@ def _normalize_calculation_mode(mode_value):
         "freq",
         "vibration",
         "vibrational",
-        "프리퀀시",
-        "진동",
     ):
         return "frequency"
     if normalized in (

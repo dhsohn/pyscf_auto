@@ -26,13 +26,13 @@ XC_FUNCTIONAL_OPTIONS = [
     "b97-d",
 ]
 SOLVENT_MODEL_OPTIONS = ["pcm", "smd", "none (vacuum)"]
-DISPERSION_MODEL_OPTIONS = ["none (사용 안 함)", "d3bj", "d3zero", "d4"]
+DISPERSION_MODEL_OPTIONS = ["none (disabled)", "d3bj", "d3zero", "d4"]
 CALCULATION_MODE_OPTIONS = [
-    "구조 최적화",
-    "단일점 에너지 계산",
-    "프리퀀시 계산",
-    "IRC 계산",
-    "스캔 계산",
+    "Geometry optimization",
+    "Single-point energy",
+    "Frequency analysis",
+    "IRC calculation",
+    "Scan calculation",
 ]
 
 
@@ -56,19 +56,19 @@ def _prompt_choice(prompt, options, allow_custom=False, default_value=None):
         for index, option in enumerate(normalized_options, start=1):
             print(f"{index}. {option}")
         if allow_custom:
-            print("0. 직접 입력")
+            print("0. Enter custom value")
         choice = input("> ").strip()
         if not choice and default_value:
             return default_value
         if allow_custom and choice == "0":
-            custom = input("값을 입력하세요: ").strip()
+            custom = input("Enter a value: ").strip()
             if custom:
                 return custom
         if choice.isdigit():
             index = int(choice)
             if 1 <= index <= len(normalized_options):
                 return normalized_options[index - 1]
-        print("유효한 번호를 입력하세요.")
+        print("Enter a valid number.")
 
 
 def _prompt_yes_no(prompt, default=True):
@@ -81,7 +81,7 @@ def _prompt_yes_no(prompt, default=True):
             return True
         if response in ("n", "no"):
             return False
-        print("y 또는 n으로 입력하세요.")
+        print("Enter 'y' or 'n'.")
 
 
 def _prompt_dispersion(stage_label, default_value=None):
@@ -89,7 +89,7 @@ def _prompt_dispersion(stage_label, default_value=None):
         DISPERSION_MODEL_OPTIONS[0] if default_value is None else default_value
     )
     choice = _prompt_choice(
-        f"{stage_label} dispersion 보정을 선택하세요:",
+        f"Select dispersion correction for {stage_label}:",
         DISPERSION_MODEL_OPTIONS,
         default_value=default_label,
     )
@@ -100,18 +100,18 @@ def _prompt_dispersion(stage_label, default_value=None):
 
 def _prompt_int_list(prompt, count):
     while True:
-        raw = input(f"{prompt} (예: 0,1)\n> ").strip()
+        raw = input(f"{prompt} (e.g., 0,1)\n> ").strip()
         parts = [part.strip() for part in raw.split(",") if part.strip()]
         if len(parts) != count:
-            print(f"{count}개의 인덱스를 입력하세요.")
+            print(f"Enter {count} indices.")
             continue
         try:
             values = [int(part) for part in parts]
         except ValueError:
-            print("정수 인덱스를 입력하세요.")
+            print("Enter integer indices.")
             continue
         if any(value < 0 for value in values):
-            print("인덱스는 0 이상의 정수여야 합니다.")
+            print("Indices must be non-negative integers.")
             continue
         return values
 
@@ -122,36 +122,36 @@ def _prompt_float(prompt):
         try:
             return float(raw)
         except ValueError:
-            print("숫자를 입력하세요.")
+            print("Enter a number.")
 
 
 def _prompt_float_list(prompt):
     while True:
-        raw = input(f"{prompt} (예: 1.0,2.5,3.2)\n> ").strip()
+        raw = input(f"{prompt} (e.g., 1.0,2.5,3.2)\n> ").strip()
         parts = [part.strip() for part in raw.split(",") if part.strip()]
         if not parts:
-            print("최소 1개 이상의 숫자를 입력하세요.")
+            print("Enter at least one number.")
             continue
         try:
             return [float(part) for part in parts]
         except ValueError:
-            print("숫자 목록을 올바른 형식으로 입력하세요.")
+            print("Enter the list of numbers in a valid format.")
 
 
 def _prompt_scan_dimension():
     scan_type = _prompt_choice(
-        "스캔 유형을 선택하세요:",
+        "Select scan type:",
         ["bond", "angle", "dihedral"],
     )
     if scan_type == "bond":
-        indices = _prompt_int_list("bond 인덱스 i,j를 입력하세요", 2)
+        indices = _prompt_int_list("Enter bond indices i,j", 2)
     elif scan_type == "angle":
-        indices = _prompt_int_list("angle 인덱스 i,j,k를 입력하세요", 3)
+        indices = _prompt_int_list("Enter angle indices i,j,k", 3)
     else:
-        indices = _prompt_int_list("dihedral 인덱스 i,j,k,l을 입력하세요", 4)
-    start = _prompt_float("시작값(start)을 입력하세요")
-    end = _prompt_float("종료값(end)을 입력하세요")
-    step = _prompt_float("스텝(step)을 입력하세요")
+        indices = _prompt_int_list("Enter dihedral indices i,j,k,l", 4)
+    start = _prompt_float("Enter start value")
+    end = _prompt_float("Enter end value")
+    step = _prompt_float("Enter step value")
     dimension = {"type": scan_type, "start": start, "end": end, "step": step}
     for key, value in zip(("i", "j", "k", "l"), indices, strict=False):
         dimension[key] = value
@@ -160,41 +160,47 @@ def _prompt_scan_dimension():
 
 def _prompt_interactive_config(args):
     calculation_choice = _prompt_choice(
-        "어떤 계산을 진행할까요?",
+        "Which calculation would you like to run?",
         CALCULATION_MODE_OPTIONS,
     )
     calculation_mode = {
-        "구조 최적화": "optimization",
-        "단일점 에너지 계산": "single_point",
-        "프리퀀시 계산": "frequency",
-        "IRC 계산": "irc",
-        "스캔 계산": "scan",
+        "Geometry optimization": "optimization",
+        "Single-point energy": "single_point",
+        "Frequency analysis": "frequency",
+        "IRC calculation": "irc",
+        "Scan calculation": "scan",
     }[calculation_choice]
     optimization_choice = None
     scan_config = None
     if calculation_mode == "optimization":
         optimization_choice = _prompt_choice(
-            "최적화 유형을 선택하세요:",
-            ["중간체 최적화", "전이상태 최적화"],
+            "Select optimization type:",
+            ["Minimum optimization", "Transition-state optimization"],
         )
     if calculation_mode == "scan":
         scan_mode_choice = _prompt_choice(
-            "스캔 계산 모드를 선택하세요:",
-            ["최적화 스캔", "단일점 스캔"],
+            "Select scan mode:",
+            ["Optimization scan", "Single-point scan"],
         )
-        scan_mode = "optimization" if scan_mode_choice == "최적화 스캔" else "single_point"
+        scan_mode = (
+            "optimization"
+            if scan_mode_choice == "Optimization scan"
+            else "single_point"
+        )
         dimension_count_choice = _prompt_choice(
-            "스캔 차원을 선택하세요:",
+            "Select scan dimension:",
             ["1D", "2D"],
         )
         dimension_count = 1 if dimension_count_choice == "1D" else 2
         dimensions = [_prompt_scan_dimension() for _ in range(dimension_count)]
         grid_values = None
-        if _prompt_yes_no("각 차원별로 그리드 값을 직접 입력하시겠습니까?", default=False):
+        if _prompt_yes_no("Enter grid values manually for each dimension?", default=False):
             grid_values = []
             for index in range(dimension_count):
                 grid_values.append(
-                    _prompt_float_list(f"{index + 1}번째 차원의 그리드 값을 입력하세요")
+                    _prompt_float_list(
+                        f"Enter grid values for dimension {index + 1}"
+                    )
                 )
         if dimension_count == 1:
             scan_config = dimensions[0]
@@ -209,14 +215,14 @@ def _prompt_interactive_config(args):
     base_config_path = _REPO_ROOT / config_filename
     if not base_config_path.is_file():
         raise FileNotFoundError(
-            "인터랙티브 기본 설정 파일을 찾을 수 없습니다. "
-            f"다음 경로에 파일이 있어야 합니다: {base_config_path}"
+            "Interactive base config file not found. "
+            f"Expected file at: {base_config_path}"
         )
 
     config, _ = load_run_config(base_config_path)
     if not isinstance(config, dict):
         raise ValueError(f"Failed to load base config from {base_config_path}.")
-    if optimization_choice == "전이상태 최적화":
+    if optimization_choice == "Transition-state optimization":
         optimizer_config = config.setdefault("optimizer", {})
         optimizer_config["mode"] = "transition_state"
         optimizer_config.setdefault("output_xyz", "ts_optimized.xyz")
@@ -234,25 +240,25 @@ def _prompt_interactive_config(args):
     else:
         constraints_hint = ""
     constraints_prompt = (
-        "constraints를 JSON으로 입력하세요 (예: "
+        "Enter constraints as JSON (e.g., "
         "{\"bonds\":[{\"i\":0,\"j\":1,\"length\":1.10}]})"
     )
     if constraints_hint:
-        constraints_prompt += f" [기본값: {constraints_hint}]"
+        constraints_prompt += f" [default: {constraints_hint}]"
     constraints_input = input(f"{constraints_prompt}\n> ").strip()
     if not constraints_input and constraints_default is not None:
         constraints = constraints_default
     elif not constraints_input:
         constraints = None
-    elif constraints_input.lower() in ("none", "null", "없음", "no"):
+    elif constraints_input.lower() in ("none", "null", "no"):
         constraints = None
     else:
         try:
             constraints = json.loads(constraints_input)
         except json.JSONDecodeError as exc:
-            raise ValueError("constraints 입력이 올바른 JSON이 아닙니다.") from exc
+            raise ValueError("constraints input is not valid JSON.") from exc
         if not isinstance(constraints, dict):
-            raise ValueError("constraints 입력은 JSON 객체여야 합니다.")
+            raise ValueError("constraints input must be a JSON object.")
 
     if not args.xyz_file:
         input_dir = _resolve_interactive_input_dir()
@@ -264,8 +270,8 @@ def _prompt_interactive_config(args):
             ]
             hint = ", ".join(expected_paths) if expected_paths else "input/"
             raise FileNotFoundError(
-                "인터랙티브 입력 디렉토리를 찾을 수 없습니다. "
-                f"다음 경로 중 하나에 input 디렉토리가 있어야 합니다: {hint}"
+                "Interactive input directory not found. "
+                f"Expected an input directory at: {hint}"
             )
         input_xyz_files = sorted(
             path.name
@@ -273,21 +279,21 @@ def _prompt_interactive_config(args):
             if path.is_file() and path.suffix.lower() == ".xyz"
         )
         if not input_xyz_files:
-            raise ValueError("input 디렉토리에 .xyz 파일이 없습니다.")
+            raise ValueError("No .xyz files found in the input directory.")
         selected_xyz = _prompt_choice(
-            "인풋 파일을 선택하세요 (.xyz):",
+            "Select an input file (.xyz):",
             input_xyz_files,
         )
         args.xyz_file = str(input_dir / selected_xyz)
 
     basis = _prompt_choice(
-        "basis set을 선택하세요:",
+        "Select a basis set:",
         BASIS_SET_OPTIONS,
         allow_custom=True,
         default_value=config.get("basis"),
     )
     xc = _prompt_choice(
-        "함수를 선택하세요:",
+        "Select an XC functional:",
         XC_FUNCTIONAL_OPTIONS,
         allow_custom=True,
         default_value=config.get("xc"),
@@ -297,14 +303,14 @@ def _prompt_interactive_config(args):
     if calculation_mode in ("optimization", "single_point", "frequency"):
         base_dispersion = _prompt_dispersion(
             {
-                "optimization": "구조 최적화",
-                "single_point": "단일점 계산",
-                "frequency": "프리퀀시 계산",
+                "optimization": "geometry optimization",
+                "single_point": "single-point calculation",
+                "frequency": "frequency analysis",
             }[calculation_mode],
             config.get("dispersion"),
         )
     solvent_model = _prompt_choice(
-        "용매 모델을 선택하세요:",
+        "Select a solvent model:",
         SOLVENT_MODEL_OPTIONS,
         allow_custom=True,
         default_value=config.get("solvent_model"),
@@ -313,7 +319,6 @@ def _prompt_interactive_config(args):
         "none",
         "none (vacuum)",
         "vacuum",
-        "없음",
     ):
         solvent_model = None
     if solvent_model is None:
@@ -323,7 +328,7 @@ def _prompt_interactive_config(args):
         solvent_map = load_solvent_map(solvent_map_path)
         solvent_options = list(solvent_map.keys())
         solvent = _prompt_choice(
-            "용매를 선택하세요:",
+            "Select a solvent:",
             solvent_options,
             allow_custom=True,
             default_value=config.get("solvent", "vacuum"),
@@ -332,16 +337,16 @@ def _prompt_interactive_config(args):
     frequency_enabled = False
     single_point_config = config.get("single_point") or {}
     if calculation_mode == "optimization":
-        frequency_enabled = _prompt_yes_no("프리퀀시 계산을 실행할까요?", default=True)
+        frequency_enabled = _prompt_yes_no("Run a frequency calculation?", default=True)
         if frequency_enabled:
             single_point_enabled = _prompt_yes_no(
-                "프리퀀시 계산에서 허수진동수가 적절하게 나오면 "
-                "단일점 계산을 진행하시겠습니까?",
+                "If the frequency calculation has acceptable imaginary modes, "
+                "run a single-point calculation?",
                 default=True,
             )
         else:
             single_point_enabled = _prompt_yes_no(
-                "단일점(single point) 계산을 실행할까요?",
+                "Run a single-point calculation?",
                 default=True,
             )
         if single_point_enabled:
@@ -351,33 +356,32 @@ def _prompt_interactive_config(args):
                 else base_dispersion
             )
             sp_basis = _prompt_choice(
-                "단일점 계산용 basis set을 선택하세요:",
+                "Select a basis set for the single-point calculation:",
                 BASIS_SET_OPTIONS,
                 allow_custom=True,
                 default_value=basis,
             )
             sp_xc = _prompt_choice(
-                "단일점 계산용 함수를 선택하세요:",
+                "Select an XC functional for the single-point calculation:",
                 XC_FUNCTIONAL_OPTIONS,
                 allow_custom=True,
                 default_value=xc,
             )
             sp_xc = normalize_xc_functional(sp_xc)
             sp_solvent_model = _prompt_choice(
-                "단일점 계산용 용매 모델을 선택하세요:",
+                "Select a solvent model for the single-point calculation:",
                 SOLVENT_MODEL_OPTIONS,
                 allow_custom=True,
                 default_value=solvent_model,
             )
             sp_dispersion = _prompt_dispersion(
-                "단일점 계산",
+                "single-point calculation",
                 sp_dispersion_default,
             )
             if isinstance(sp_solvent_model, str) and sp_solvent_model.lower() in (
                 "none",
                 "none (vacuum)",
                 "vacuum",
-                "없음",
             ):
                 sp_solvent_model = None
             if sp_solvent_model is None:
@@ -387,7 +391,7 @@ def _prompt_interactive_config(args):
                 solvent_map = load_solvent_map(solvent_map_path)
                 solvent_options = list(solvent_map.keys())
                 sp_solvent = _prompt_choice(
-                    "단일점 계산용 용매를 선택하세요:",
+                    "Select a solvent for the single-point calculation:",
                     solvent_options,
                     allow_custom=True,
                     default_value=solvent,
@@ -407,14 +411,14 @@ def _prompt_interactive_config(args):
                     sp_dispersion if single_point_enabled else base_dispersion
                 )
             freq_dispersion = _prompt_dispersion(
-                "프리퀀시 계산",
+                "frequency analysis",
                 freq_dispersion_default,
             )
             frequency_config["dispersion_model"] = freq_dispersion
             config["frequency"] = frequency_config
     if calculation_mode == "single_point":
         sp_dispersion = _prompt_dispersion(
-            "단일점 계산",
+            "single-point calculation",
             single_point_config.get("dispersion", base_dispersion),
         )
         single_point_config = dict(single_point_config)
@@ -426,7 +430,7 @@ def _prompt_interactive_config(args):
         else:
             freq_dispersion_default = base_dispersion
         freq_dispersion = _prompt_dispersion(
-            "프리퀀시 계산",
+            "frequency analysis",
             freq_dispersion_default,
         )
         frequency_config["dispersion_model"] = freq_dispersion

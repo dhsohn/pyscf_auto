@@ -812,7 +812,7 @@ def _format_json_decode_error(path, error):
             "Extra data after the first JSON value. "
             f"remainder preview: {preview}. "
             f"common causes: {common_causes}. "
-            "파일에 JSON 객체가 두 개 이상 있음."
+            "More than one JSON object detected in the file."
         )
     return f"Failed to parse JSON file '{path}' ({location}): {message}"
 
@@ -908,8 +908,6 @@ def validate_run_config(config):
             "geom",
             "structure",
             "structureoptimization",
-            "구조최적화",
-            "구조최적",
         ):
             return "optimization"
         if normalized in (
@@ -921,9 +919,6 @@ def validate_run_config(config):
             "single_point",
             "single",
             "sp",
-            "단일점",
-            "단일점에너지",
-            "단일점에너지계산",
         ):
             return "single_point"
         if normalized in (
@@ -932,8 +927,6 @@ def validate_run_config(config):
             "freq",
             "vibration",
             "vibrational",
-            "프리퀀시",
-            "진동",
         ):
             return "frequency"
         if normalized in (

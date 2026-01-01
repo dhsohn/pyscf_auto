@@ -204,7 +204,7 @@ def setup_logging(log_path, verbose, run_id=None, event_log_path=None):
         re.compile(r"SCF not converged", re.IGNORECASE),
         re.compile(r"SCF (?:failed|failure|diverged|divergence)", re.IGNORECASE),
         re.compile(r"\bexplode(?:d|s|)\b", re.IGNORECASE),
-        re.compile(r"폭발"),
+        re.compile(r"\bexplosion\b", re.IGNORECASE),
     ]
     warn_patterns = [
         re.compile(r"^WARN:"),

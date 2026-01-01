@@ -242,16 +242,16 @@ def build_molecule_context(args, context: RunContext, memory_mb) -> MoleculeCont
     atom_spec, charge, spin, multiplicity = load_xyz(args.xyz_file)
     if context["optimizer_mode"] == "transition_state" and multiplicity is None:
         if args.interactive:
-            logging.info("TS 모드: multiplicity 입력 강제")
+            logging.info("TS mode: multiplicity input is required.")
             while True:
-                raw_value = input("Multiplicity(2S+1)를 입력하세요: ").strip()
+                raw_value = input("Enter multiplicity (2S+1): ").strip()
                 try:
                     multiplicity = int(raw_value)
                 except ValueError:
-                    print("Multiplicity는 양의 정수여야 합니다.")
+                    print("Multiplicity must be a positive integer.")
                     continue
                 if multiplicity < 1:
-                    print("Multiplicity는 양의 정수여야 합니다.")
+                    print("Multiplicity must be a positive integer.")
                     continue
                 break
         else:
