@@ -5,6 +5,7 @@ import time
 
 from ..ase_backend import _run_ase_irc
 from .events import finalize_metadata
+from .utils import _evaluate_irc_profile
 
 
 def run_irc_stage(stage_context, queue_update_fn):
@@ -47,23 +48,55 @@ def run_irc_stage(stage_context, queue_update_fn):
             "profile": irc_result.get("profile", []),
             "profile_csv_file": stage_context["irc_profile_csv_path"],
         }
+        irc_payload["assessment"] = _evaluate_irc_profile(irc_payload["profile"])
         with open(stage_context["irc_output_path"], "w", encoding="utf-8") as handle:
             json.dump(irc_payload, handle, indent=2)
         with open(
             stage_context["irc_profile_csv_path"], "w", encoding="utf-8", newline=""
         ) as handle:
+            direction_assessment = (
+                irc_payload.get("assessment", {})
+                .get("details", {})
+                .get("directions", {})
+            )
             writer = csv.DictWriter(
                 handle,
-                fieldnames=["direction", "step", "energy_ev", "energy_hartree"],
+                fieldnames=[
+                    "direction",
+                    "step",
+                    "energy_ev",
+                    "energy_hartree",
+                    "direction_status",
+                    "direction_endpoint_energy_ev",
+                    "direction_min_energy_ev",
+                    "direction_drop_from_ts_ev",
+                    "direction_min_drop_from_ts_ev",
+                    "direction_endpoint_near_min",
+                ],
             )
             writer.writeheader()
             for entry in irc_payload["profile"]:
+                direction_detail = direction_assessment.get(entry.get("direction"), {})
                 writer.writerow(
                     {
                         "direction": entry.get("direction"),
                         "step": entry.get("step"),
                         "energy_ev": entry.get("energy_ev"),
                         "energy_hartree": entry.get("energy_hartree"),
+                        "direction_status": direction_detail.get("status"),
+                        "direction_endpoint_energy_ev": direction_detail.get(
+                            "endpoint_energy_ev"
+                        ),
+                        "direction_min_energy_ev": direction_detail.get("min_energy_ev"),
+                        "direction_drop_from_ts_ev": direction_detail.get(
+                            "endpoint_drop_from_ts_ev"
+                        ),
+                        "direction_min_drop_from_ts_ev": direction_detail.get(
+                            "min_drop_from_ts_ev"
+                        ),
+                        "direction_endpoint_near_min": direction_detail.get(
+                            "endpoint_near_min"
+                        ),
                     }
                 )
         calculation_metadata["irc"] = irc_payload

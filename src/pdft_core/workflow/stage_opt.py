@@ -32,6 +32,7 @@ from ..run_opt_resources import collect_environment_snapshot, ensure_parent_dir,
 from .types import MoleculeContext, RunContext
 from .utils import (
     _atoms_to_atom_spec,
+    _evaluate_irc_profile,
     _frequency_units,
     _frequency_versions,
     _thermochemistry_payload,
@@ -671,6 +672,12 @@ def run_optimization_stage(
         with open(frequency_output_path, "w", encoding="utf-8") as handle:
             json.dump(frequency_payload, handle, indent=2)
 
+    ts_energy_ev = None
+    if frequency_payload:
+        ts_energy_ev = frequency_payload.get("results", {}).get("energy")
+    if ts_energy_ev is None:
+        ts_energy_ev = last_scf_energy
+
     try:
         if irc_status == "pending":
             logging.info("Running IRC for optimized geometry...")
@@ -739,6 +746,10 @@ def run_optimization_stage(
                     "mode_eigenvalue": mode_result.get("eigenvalue"),
                     "profile": irc_result.get("profile", []),
                 }
+                irc_payload["assessment"] = _evaluate_irc_profile(
+                    irc_payload["profile"],
+                    ts_energy_ev=ts_energy_ev,
+                )
                 irc_status = "executed"
             except Exception as exc:
                 logging.exception("IRC calculation failed.")

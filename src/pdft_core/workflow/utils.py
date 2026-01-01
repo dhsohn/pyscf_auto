@@ -141,6 +141,115 @@ def _normalize_solvent_settings(stage_label, solvent_name, solvent_model):
     return solvent_name, solvent_model
 
 
+def _evaluate_irc_profile(
+    profile,
+    ts_energy_ev=None,
+    min_drop_ev=1.0e-3,
+    endpoint_tol_ev=1.0e-3,
+):
+    warnings = []
+    if not profile:
+        return {
+            "status": "fail",
+            "details": {
+                "reason": "empty_profile",
+                "ts_energy_ev": ts_energy_ev,
+                "criteria": {
+                    "min_drop_ev": min_drop_ev,
+                    "endpoint_tol_ev": endpoint_tol_ev,
+                },
+                "directions": {},
+            },
+            "warnings": ["missing_profile"],
+        }
+    energies = [
+        entry.get("energy_ev")
+        for entry in profile
+        if entry.get("energy_ev") is not None
+    ]
+    if not energies:
+        return {
+            "status": "fail",
+            "details": {
+                "reason": "missing_energy_values",
+                "ts_energy_ev": ts_energy_ev,
+                "criteria": {
+                    "min_drop_ev": min_drop_ev,
+                    "endpoint_tol_ev": endpoint_tol_ev,
+                },
+                "directions": {},
+            },
+            "warnings": ["missing_energy_values"],
+        }
+    if ts_energy_ev is None:
+        ts_energy_ev = max(energies)
+        warnings.append("ts_energy_missing_used_profile_max")
+
+    direction_details = {}
+    for direction in ("forward", "reverse"):
+        entries = [
+            entry
+            for entry in profile
+            if entry.get("direction") == direction and entry.get("energy_ev") is not None
+        ]
+        if not entries:
+            direction_details[direction] = {
+                "status": "fail",
+                "reason": "missing_direction",
+            }
+            warnings.append(f"missing_direction:{direction}")
+            continue
+        entries = sorted(entries, key=lambda entry: entry.get("step", 0))
+        endpoint_energy = entries[-1]["energy_ev"]
+        min_energy = min(entry["energy_ev"] for entry in entries)
+        endpoint_drop = ts_energy_ev - endpoint_energy
+        min_drop = ts_energy_ev - min_energy
+        endpoint_below_ts = endpoint_drop > min_drop_ev
+        min_below_ts = min_drop > min_drop_ev
+        endpoint_near_min = endpoint_energy <= min_energy + endpoint_tol_ev
+        status = (
+            "pass"
+            if endpoint_below_ts and min_below_ts and endpoint_near_min
+            else "fail"
+        )
+        direction_details[direction] = {
+            "status": status,
+            "step_count": len(entries),
+            "endpoint_step": entries[-1].get("step"),
+            "endpoint_energy_ev": endpoint_energy,
+            "min_energy_ev": min_energy,
+            "endpoint_drop_from_ts_ev": endpoint_drop,
+            "min_drop_from_ts_ev": min_drop,
+            "endpoint_below_ts": endpoint_below_ts,
+            "min_below_ts": min_below_ts,
+            "endpoint_near_min": endpoint_near_min,
+        }
+
+    overall_status = (
+        "pass"
+        if direction_details
+        and all(
+            detail.get("status") == "pass" for detail in direction_details.values()
+        )
+        else "fail"
+    )
+    if warnings and overall_status == "pass":
+        overall_status = "warn"
+
+    return {
+        "status": overall_status,
+        "details": {
+            "ts_energy_ev": ts_energy_ev,
+            "criteria": {
+                "min_drop_ev": min_drop_ev,
+                "endpoint_tol_ev": endpoint_tol_ev,
+            },
+            "directions": direction_details,
+        },
+        "warnings": warnings,
+    }
+
+
 def _normalize_optimizer_mode(mode_value):
     if not mode_value:
         return "minimum"
