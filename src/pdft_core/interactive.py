@@ -125,6 +125,19 @@ def _prompt_float(prompt):
             print("숫자를 입력하세요.")
 
 
+def _prompt_float_list(prompt):
+    while True:
+        raw = input(f"{prompt} (예: 1.0,2.5,3.2)\n> ").strip()
+        parts = [part.strip() for part in raw.split(",") if part.strip()]
+        if not parts:
+            print("최소 1개 이상의 숫자를 입력하세요.")
+            continue
+        try:
+            return [float(part) for part in parts]
+        except ValueError:
+            print("숫자 목록을 올바른 형식으로 입력하세요.")
+
+
 def _prompt_scan_dimension():
     scan_type = _prompt_choice(
         "스캔 유형을 선택하세요:",
@@ -176,11 +189,20 @@ def _prompt_interactive_config(args):
         )
         dimension_count = 1 if dimension_count_choice == "1D" else 2
         dimensions = [_prompt_scan_dimension() for _ in range(dimension_count)]
+        grid_values = None
+        if _prompt_yes_no("각 차원별로 그리드 값을 직접 입력하시겠습니까?", default=False):
+            grid_values = []
+            for index in range(dimension_count):
+                grid_values.append(
+                    _prompt_float_list(f"{index + 1}번째 차원의 그리드 값을 입력하세요")
+                )
         if dimension_count == 1:
             scan_config = dimensions[0]
             scan_config["mode"] = scan_mode
         else:
             scan_config = {"dimensions": dimensions, "mode": scan_mode}
+        if grid_values is not None:
+            scan_config["grid"] = grid_values
     base_config_path = INTERACTIVE_CONFIG
 
     config_filename = base_config_path.name
