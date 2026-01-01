@@ -152,7 +152,7 @@ def test_parse_dispersion_settings_ase_damping_tweaks(monkeypatch):
     assert "params_tweaks" not in settings
 
 
-@pytest.mark.parametrize("config_path", ["run_config_ase.json", "run_config_ts.json"])
+@pytest.mark.parametrize("config_path", ["run_config.json"])
 def test_parse_dispersion_settings_templates(monkeypatch, config_path):
     class DummyDFTD3:
         def __init__(self, method=None, damping=None, params_tweaks=None, **kwargs):

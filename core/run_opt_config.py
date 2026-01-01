@@ -276,11 +276,9 @@ def load_run_config(config_path):
     if not os.path.isfile(config_path):
         default_missing = os.path.basename(str(config_path)) == DEFAULT_CONFIG_PATH
         example_configs = [
-            name
-            for name in ("run_config_ase.json", "run_config_ts.json")
-            if os.path.isfile(name)
+            name for name in ("run_config.json",) if os.path.isfile(name)
         ]
-        example_hint = ", ".join(example_configs) if example_configs else "run_config_ase.json"
+        example_hint = ", ".join(example_configs) if example_configs else "run_config.json"
         if default_missing:
             message = (
                 f"Default config '{DEFAULT_CONFIG_PATH}' was not found at '{config_path}'. "
@@ -343,11 +341,11 @@ def _validate_fields(config, rules, prefix=""):
 
 def _schema_example_for_path(path):
     if not path:
-        return "See run_config_ase.json for a complete example."
+        return "See run_config.json for a complete example."
     if path in RUN_CONFIG_EXAMPLES:
         return RUN_CONFIG_EXAMPLES[path]
     leaf = path.split(".")[-1]
-    return RUN_CONFIG_EXAMPLES.get(leaf, "See run_config_ase.json for a complete example.")
+    return RUN_CONFIG_EXAMPLES.get(leaf, "See run_config.json for a complete example.")
 
 
 def _format_schema_error(error):

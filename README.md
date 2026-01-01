@@ -3,7 +3,7 @@
 PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **구조 최적화(최소점/전이상태), 단일점(SP) 에너지, 프리퀀시(진동수) 분석**을 한 번에 실행하는 경량 워크플로우 스크립트입니다.
 
 - 엔트리포인트: `run_opt.py` (내부 모듈은 `core/` 패키지)
-- 기본 설정 템플릿: `run_config_ase.json`(최소점), `run_config_ts.json`(TS)
+- 기본 설정 템플릿: `run_config.json`
 - 출력은 실행 시점별로 `runs/YYYY-MM-DD_HHMMSS/` 아래에 자동으로 정리됩니다.
 
 ---
@@ -84,8 +84,7 @@ pDFT/
     run_opt_logging.py        # 로깅/이벤트 로깅
     run_opt_metadata.py       # 메타데이터/결과 정리
     run_opt_resources.py      # 스레드/메모리 리소스 제어
-  run_config_ase.json         # 최소점 최적화 템플릿
-  run_config_ts.json          # TS 최적화 템플릿
+  run_config.json             # 기본 최적화 템플릿 (최소점/TS)
   solvent_dielectric.json     # PCM 유전율 맵
   runs/                       # 실행 결과가 자동 생성되는 폴더
 ```
@@ -170,12 +169,27 @@ python run_opt.py
 
 예: 최소점 최적화 템플릿을 그대로 사용
 ```bash
-python run_opt.py input.xyz --config run_config_ase.json --non-interactive
+python run_opt.py input.xyz --config run_config.json --non-interactive
 ```
 
 예: TS 최적화 템플릿 사용
 ```bash
-python run_opt.py input_ts.xyz --config run_config_ts.json --non-interactive
+python run_opt.py input_ts.xyz --config run_config.json --non-interactive
+```
+TS 최적화를 위해서는 `run_config.json`에서 아래 값을 `transition_state`용으로 조정하세요.
+```json
+{
+  "optimizer": {
+    "mode": "transition_state",
+    "output_xyz": "ts_optimized.xyz",
+    "ase": {
+      "optimizer": "sella",
+      "trajectory": "ts_opt.traj",
+      "logfile": "ts_opt.log",
+      "sella": { "order": 1 }
+    }
+  }
+}
 ```
 
 유용한 옵션:
@@ -193,7 +207,7 @@ python run_opt.py input_ts.xyz --config run_config_ts.json --non-interactive
 
 ### 1) 큐에 실행 등록
 ```bash
-python run_opt.py input.xyz --config run_config_ase.json --non-interactive --background
+python run_opt.py input.xyz --config run_config.json --non-interactive --background
 ```
 
 옵션:
@@ -221,8 +235,8 @@ python run_opt.py --doctor
 
 ### 설정 검증(단축 명령 지원)
 ```bash
-python run_opt.py --validate-only --config run_config_ase.json
-python run_opt.py validate-config run_config_ase.json
+python run_opt.py --validate-only --config run_config.json
+python run_opt.py validate-config run_config.json
 ```
 
 ---
@@ -234,12 +248,11 @@ python run_opt.py validate-config run_config_ase.json
 
 실행:
 ```bash
-python run_opt.py --validate-only --config run_config_ase.json
-python run_opt.py --validate-only --config run_config_ts.json
+python run_opt.py --validate-only --config run_config.json
 ```
 
 필요한 파일:
-- 설정 파일: `run_config_ase.json` 또는 `run_config_ts.json`
+- 설정 파일: `run_config.json`
 
 로그/출력 위치:
 - 콘솔(stdout)에 검증 결과가 출력됩니다. (`runs/` 폴더는 생성되지 않습니다.)
@@ -256,7 +269,7 @@ python -m pytest tests
 ```
 
 필요한 파일:
-- 테스트가 참조하는 설정 템플릿: `run_config_ase.json`, `run_config_ts.json`
+- 테스트가 참조하는 설정 템플릿: `run_config.json`
 
 로그/출력 위치:
 - pytest 결과가 콘솔(stdout)에 출력됩니다.
@@ -319,7 +332,7 @@ python -m pytest tests
 - 원인: 설정 파일이 “JSON 객체 2개가 붙어있음” 등으로 문법이 깨짐
 - 해결:
   ```bash
-  python -m json.tool run_config_ts.json > /dev/null
+  python -m json.tool run_config.json > /dev/null
   ```
 
 ### 4) `cannot import name 'dft' from 'pyscf'`
@@ -337,7 +350,7 @@ python -m pytest tests
   python -m pip install -r requirements-dev.txt
   ```
 
-### 6) `FileNotFoundError: run_config_ase.json` (테스트/검증 실행 시)
+### 6) `FileNotFoundError: run_config.json` (테스트/검증 실행 시)
 - 원인: 저장소 루트가 아닌 다른 경로에서 실행
 - 해결: `cd pDFT` 후 실행하거나, 설정 파일 경로를 절대/상대 경로로 정확히 지정하세요.
 

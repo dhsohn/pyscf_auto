@@ -5,7 +5,7 @@ import pytest
 from core.run_opt_config import load_run_config, validate_run_config
 
 
-@pytest.mark.parametrize("config_path", ["run_config_ase.json", "run_config_ts.json"])
+@pytest.mark.parametrize("config_path", ["run_config.json"])
 def test_example_configs_pass_schema(config_path):
     with open(config_path, "r", encoding="utf-8") as config_file:
         config = json.load(config_file)
@@ -14,7 +14,7 @@ def test_example_configs_pass_schema(config_path):
 
 
 def test_ts_placeholder_d3_command_rejected():
-    with open("run_config_ts.json", "r", encoding="utf-8") as config_file:
+    with open("run_config.json", "r", encoding="utf-8") as config_file:
         config = json.load(config_file)
 
     config["optimizer"]["ase"]["d3_command"] = "/path/to/dftd3"

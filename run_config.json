@@ -7,6 +7,7 @@
   "xc": "b3lyp",
   "dispersion": "d3bj",
   "optimizer": {
+    "mode": "minimum",
     "output_xyz": "ase_optimized.xyz",
     "ase": {
       "d3_command": null,

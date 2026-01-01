@@ -6,8 +6,7 @@ from .run_opt_config import DEFAULT_SOLVENT_MAP_PATH, load_run_config, load_solv
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-INTERACTIVE_CONFIG_MINIMUM = _REPO_ROOT / "run_config_ase.json"
-INTERACTIVE_CONFIG_TS = _REPO_ROOT / "run_config_ts.json"
+INTERACTIVE_CONFIG = _REPO_ROOT / "run_config.json"
 BASIS_SET_OPTIONS = [
     "6-31g",
     "6-31g*",
@@ -92,17 +91,13 @@ def _prompt_interactive_config(args):
         "단일점 에너지 계산": "single_point",
         "프리퀀시 계산": "frequency",
     }[calculation_choice]
+    optimization_choice = None
     if calculation_mode == "optimization":
         optimization_choice = _prompt_choice(
             "최적화 유형을 선택하세요:",
             ["중간체 최적화", "전이상태 최적화"],
         )
-        if optimization_choice == "전이상태 최적화":
-            base_config_path = INTERACTIVE_CONFIG_TS
-        else:
-            base_config_path = INTERACTIVE_CONFIG_MINIMUM
-    else:
-        base_config_path = INTERACTIVE_CONFIG_MINIMUM
+    base_config_path = INTERACTIVE_CONFIG
 
     config_filename = base_config_path.name
     base_config_path = _REPO_ROOT / config_filename
@@ -115,6 +110,17 @@ def _prompt_interactive_config(args):
     config, _ = load_run_config(base_config_path)
     if not isinstance(config, dict):
         raise ValueError(f"Failed to load base config from {base_config_path}.")
+    if optimization_choice == "전이상태 최적화":
+        optimizer_config = config.setdefault("optimizer", {})
+        optimizer_config["mode"] = "transition_state"
+        optimizer_config.setdefault("output_xyz", "ts_optimized.xyz")
+        ase_config = optimizer_config.setdefault("ase", {})
+        ase_config["optimizer"] = "sella"
+        ase_config.setdefault("fmax", 0.05)
+        ase_config.setdefault("steps", 200)
+        ase_config.setdefault("trajectory", "ts_opt.traj")
+        ase_config.setdefault("logfile", "ts_opt.log")
+        ase_config.setdefault("sella", {"order": 1})
 
     if not args.xyz_file:
         input_dir = _resolve_interactive_input_dir()
@@ -265,8 +271,7 @@ __all__ = [
     "_prompt_choice",
     "_prompt_yes_no",
     "_prompt_interactive_config",
-    "INTERACTIVE_CONFIG_MINIMUM",
-    "INTERACTIVE_CONFIG_TS",
+    "INTERACTIVE_CONFIG",
     "BASIS_SET_OPTIONS",
     "XC_FUNCTIONAL_OPTIONS",
     "SOLVENT_MODEL_OPTIONS",
