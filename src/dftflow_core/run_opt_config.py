@@ -1,12 +1,14 @@
 import json
 import os
 import re
+import tomllib
 from importlib import resources
 from importlib.resources.abc import Traversable
 from dataclasses import dataclass
 from typing import Any, Mapping
 
 from jsonschema import Draft7Validator
+import yaml
 
 DEFAULT_CHARGE = 0
 DEFAULT_SPIN = None
@@ -662,7 +664,7 @@ class RunConfig:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "RunConfig":
         if not isinstance(data, dict):
-            raise ValueError("Config must be a JSON object.")
+            raise ValueError("Config must be an object/mapping.")
         frequency_block = data.get("frequency")
         if not frequency_block:
             frequency_block = data.get("freq")
@@ -720,20 +722,20 @@ def load_run_config(config_path):
             message = (
                 f"Default config '{DEFAULT_CONFIG_PATH}' was not found at '{config_path}'. "
                 f"Copy an example config (e.g., {example_hint}) to {DEFAULT_CONFIG_PATH}, "
-                "or pass --config with a valid JSON file."
+                "or pass --config with a valid config file (JSON/YAML/TOML)."
             )
         else:
             message = (
                 f"Config file not found: '{config_path}'. "
-                f"Use --config with a valid JSON file (examples: {example_hint})."
+                "Use --config with a valid config file (JSON/YAML/TOML) "
+                f"(examples: {example_hint})."
             )
         raise FileNotFoundError(message)
     with open(config_path, "r", encoding="utf-8") as config_file:
         raw_config = config_file.read()
-        try:
-            config = json.loads(raw_config)
-        except json.JSONDecodeError as error:
-            raise ValueError(_format_json_decode_error(config_path, error)) from error
+        config, raw_config = _parse_config_contents(config_path, raw_config)
+    if not isinstance(config, dict):
+        raise ValueError("Config must be an object/mapping.")
     return config, raw_config
 
 
@@ -784,10 +786,11 @@ def load_solvent_map_from_resource():
 
 def _load_solvent_map_from_resolved(resolved):
     with _open_solvent_map(resolved) as map_file:
-        try:
-            return json.load(map_file)
-        except json.JSONDecodeError as error:
-            raise ValueError(_format_json_decode_error(str(resolved), error)) from error
+        raw_map = map_file.read()
+    map_data, _ = _parse_config_contents(str(resolved), raw_map, expect_raw_json=False)
+    if not isinstance(map_data, dict):
+        raise ValueError("Solvent map must be an object/mapping.")
+    return map_data
 
 
 def _open_solvent_map(resolved):
@@ -815,6 +818,39 @@ def _format_json_decode_error(path, error):
             "More than one JSON object detected in the file."
         )
     return f"Failed to parse JSON file '{path}' ({location}): {message}"
+
+
+def _format_yaml_decode_error(path, error):
+    return f"Failed to parse YAML file '{path}': {error}"
+
+
+def _format_toml_decode_error(path, error):
+    return f"Failed to parse TOML file '{path}': {error}"
+
+
+def _parse_config_contents(path, raw_text, expect_raw_json=True):
+    extension = os.path.splitext(str(path))[1].lower()
+    if extension in (".yaml", ".yml"):
+        try:
+            config = yaml.safe_load(raw_text)
+        except yaml.YAMLError as error:
+            raise ValueError(_format_yaml_decode_error(path, error)) from error
+        if expect_raw_json:
+            raw_text = json.dumps(config, indent=2, ensure_ascii=False)
+        return config, raw_text
+    if extension == ".toml":
+        try:
+            config = tomllib.loads(raw_text)
+        except tomllib.TOMLDecodeError as error:
+            raise ValueError(_format_toml_decode_error(path, error)) from error
+        if expect_raw_json:
+            raw_text = json.dumps(config, indent=2, ensure_ascii=False)
+        return config, raw_text
+    try:
+        config = json.loads(raw_text)
+    except json.JSONDecodeError as error:
+        raise ValueError(_format_json_decode_error(path, error)) from error
+    return config, raw_text
 
 
 def _validate_fields(config, rules, prefix=""):
@@ -870,7 +906,7 @@ def _validate_schema(config):
 
 def validate_run_config(config):
     if not isinstance(config, dict):
-        raise ValueError("Config must be a JSON object.")
+        raise ValueError("Config must be an object/mapping.")
     _validate_schema(config)
 
     def is_int(value):
@@ -1138,7 +1174,7 @@ def validate_run_config(config):
             if chosen_params is not None:
                 if not isinstance(chosen_params, dict):
                     raise ValueError(
-                        f"Config '{param_prefix}' must be a JSON object."
+                        f"Config '{param_prefix}' must be an object/mapping."
                     )
                 for key, value in chosen_params.items():
                     if key == "damping" and isinstance(value, dict):
