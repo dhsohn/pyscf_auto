@@ -131,7 +131,7 @@ def run_doctor():
 
     thread_status = inspect_thread_settings()
     print("INFO thread environment settings:")
-    for env_name, env_value in thread_status["environment"].items():
+    for env_name, env_value in thread_status["env"].items():
         print(f"  {env_name}={env_value}")
     print(f"INFO requested thread count = {thread_status['requested']}")
     print(f"INFO pyscf.lib.num_threads() = {thread_status['effective_threads']}")
