@@ -123,6 +123,7 @@ RUN_CONFIG_SCHEMA = {
                 "chkfile": {"type": ["string", "null"]},
                 "force_restricted": {"type": ["boolean", "null"]},
                 "force_unrestricted": {"type": ["boolean", "null"]},
+                "extra": {"type": ["object", "null"]},
             },
             "additionalProperties": True,
         },
@@ -148,6 +149,7 @@ RUN_CONFIG_SCHEMA = {
                         "chkfile": {"type": ["string", "null"]},
                         "force_restricted": {"type": ["boolean", "null"]},
                         "force_unrestricted": {"type": ["boolean", "null"]},
+                        "extra": {"type": ["object", "null"]},
                     },
                     "additionalProperties": True,
                 },
@@ -309,12 +311,18 @@ RUN_CONFIG_EXAMPLES = {
     "optimizer.ase": "\"ase\": {\"d3_backend\": \"dftd3\", \"d3_command\": null}",
     "optimizer.ase.d3_backend": "\"d3_backend\": \"dftd3\"",
     "optimizer.ase.d3_command_validate": "\"d3_command_validate\": true",
-    "scf": "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8, \"chkfile\": \"scf.chk\"}",
+    "scf": (
+        "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8, "
+        "\"chkfile\": \"scf.chk\", \"extra\": {\"grids\": {\"level\": 3}}}"
+    ),
     "single_point": (
         "\"single_point\": {\"basis\": \"def2-svp\", \"xc\": \"b3lyp\", "
         "\"solvent\": \"water\", \"dispersion\": \"d3bj\"}"
     ),
-    "single_point.scf": "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8, \"chkfile\": \"scf.chk\"}",
+    "single_point.scf": (
+        "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8, "
+        "\"chkfile\": \"scf.chk\", \"extra\": {\"density_fit\": true}}"
+    ),
     "frequency": "\"frequency\": {\"dispersion\": \"d3bj\", \"dispersion_model\": \"d3bj\"}",
     "freq": "\"freq\": {\"dispersion\": \"d3bj\", \"dispersion_model\": \"d3bj\"}",
     "thermo": "\"thermo\": {\"T\": 298.15, \"P\": 1.0, \"unit\": \"atm\"}",
@@ -340,6 +348,7 @@ class SCFConfig:
     diis: bool | int | None = None
     force_restricted: bool | None = None
     force_unrestricted: bool | None = None
+    extra: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "SCFConfig | None":
@@ -356,6 +365,7 @@ class SCFConfig:
             diis=data.get("diis"),
             force_restricted=data.get("force_restricted"),
             force_unrestricted=data.get("force_unrestricted"),
+            extra=data.get("extra"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -794,6 +804,9 @@ def validate_run_config(config):
     def is_diis(value):
         return isinstance(value, (bool, int))
 
+    def is_dict(value):
+        return isinstance(value, dict)
+
     def is_positive_int(value):
         return is_int(value) and value > 0
 
@@ -927,6 +940,34 @@ def validate_run_config(config):
                             )
             return
         _validate_scan_dimension(scan, name, require_bounds=True)
+
+    def _validate_scf_extra(extra, name):
+        if extra is None:
+            return
+        if not isinstance(extra, dict):
+            raise ValueError(f"Config '{name}.extra' must be an object.")
+        allowed_keys = {"grids", "density_fit", "init_guess"}
+        unknown = set(extra) - allowed_keys
+        if unknown:
+            unknown_list = ", ".join(sorted(unknown))
+            raise ValueError(
+                "Config '{name}.extra' has unsupported keys: {keys}. "
+                "Allowed keys: grids, density_fit, init_guess, grids.level, grids.prune.".format(
+                    name=name, keys=unknown_list
+                )
+            )
+        if "grids" in extra:
+            grids = extra.get("grids")
+            if not isinstance(grids, dict):
+                raise ValueError(f"Config '{name}.extra.grids' must be an object.")
+            allowed_grid_keys = {"level", "prune"}
+            grid_unknown = set(grids) - allowed_grid_keys
+            if grid_unknown:
+                grid_unknown_list = ", ".join(sorted(grid_unknown))
+                raise ValueError(
+                    "Config '{name}.extra.grids' has unsupported keys: {keys}. "
+                    "Allowed keys: level, prune.".format(name=name, keys=grid_unknown_list)
+                )
 
     validation_rules = {
         "threads": (is_positive_int, "Config '{name}' must be a positive integer."),
@@ -1101,8 +1142,10 @@ def validate_run_config(config):
             "chkfile": (is_str, "Config '{name}' must be a string path."),
             "force_restricted": (is_bool, "Config '{name}' must be a boolean."),
             "force_unrestricted": (is_bool, "Config '{name}' must be a boolean."),
+            "extra": (is_dict, "Config '{name}' must be an object."),
         }
         _validate_fields(config["scf"], scf_validation_rules, prefix="scf.")
+        _validate_scf_extra(config["scf"].get("extra"), "scf")
         if config["scf"].get("force_restricted") and config["scf"].get("force_unrestricted"):
             raise ValueError(
                 "Config 'scf' must not set both 'force_restricted' and 'force_unrestricted'."
@@ -1131,8 +1174,10 @@ def validate_run_config(config):
                 "chkfile": (is_str, "Config '{name}' must be a string path."),
                 "force_restricted": (is_bool, "Config '{name}' must be a boolean."),
                 "force_unrestricted": (is_bool, "Config '{name}' must be a boolean."),
+                "extra": (is_dict, "Config '{name}' must be an object."),
             }
             _validate_fields(config["single_point"]["scf"], scf_validation_rules, prefix="single_point.scf.")
+            _validate_scf_extra(config["single_point"]["scf"].get("extra"), "single_point.scf")
             if (
                 config["single_point"]["scf"].get("force_restricted")
                 and config["single_point"]["scf"].get("force_unrestricted")

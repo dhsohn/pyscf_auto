@@ -41,7 +41,15 @@
     "conv_tol": 1e-7,
     "diis": 8,
     "level_shift": 0.0,
-    "damping": 0.0
+    "damping": 0.0,
+    "extra": {
+      "grids": {
+        "level": 3,
+        "prune": "sg1"
+      },
+      "density_fit": "auxbasis",
+      "init_guess": "minao"
+    }
   },
   "single_point": {
     "basis": "6-31g",
@@ -55,7 +63,14 @@
       "conv_tol": 1e-7,
       "diis": 8,
       "level_shift": 0.0,
-      "damping": 0.0
+      "damping": 0.0,
+      "extra": {
+        "grids": {
+          "level": 3
+        },
+        "density_fit": "auxbasis",
+        "init_guess": "minao"
+      }
     }
   }
 }
