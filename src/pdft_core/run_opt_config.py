@@ -63,7 +63,8 @@ RUN_CONFIG_SCHEMA = {
         "irc_enabled": {"type": ["boolean", "null"]},
         "irc_file": {"type": ["string", "null"]},
         "irc": {
-            "type": "object",
+            "type": ["object", "null"],
+            "required": [],
             "properties": {
                 "steps": {"type": ["integer", "null"], "minimum": 1},
                 "step_size": {
@@ -75,6 +76,95 @@ RUN_CONFIG_SCHEMA = {
                     "exclusiveMinimum": 0,
                 },
             },
+            "additionalProperties": True,
+        },
+        "optimizer": {
+            "type": ["object", "null"],
+            "required": [],
+            "properties": {
+                "output_xyz": {"type": ["string", "null"]},
+                "mode": {"type": ["string", "null"]},
+                "ase": {
+                    "type": ["object", "null"],
+                    "required": [],
+                    "properties": {
+                        "d3_params": {"type": ["object", "null"]},
+                        "dftd3_params": {"type": ["object", "null"]},
+                        "d3_backend": {"type": ["string", "null"], "enum": ["dftd3", "ase", None]},
+                        "dftd3_backend": {"type": ["string", "null"], "enum": ["dftd3", "ase", None]},
+                        "d3_command": {"type": ["string", "null"]},
+                        "dftd3_command": {"type": ["string", "null"]},
+                        "d3_command_validate": {"type": "boolean"},
+                        "optimizer": {"type": ["string", "null"]},
+                        "fmax": {"type": ["number", "integer", "null"]},
+                        "steps": {"type": ["integer", "null"]},
+                        "trajectory": {"type": ["string", "null"]},
+                        "logfile": {"type": ["string", "null"]},
+                        "sella": {"type": ["object", "null"]},
+                    },
+                    "additionalProperties": True,
+                },
+            },
+            "additionalProperties": True,
+        },
+        "scf": {
+            "type": ["object", "null"],
+            "required": [],
+            "properties": {
+                "max_cycle": {"type": ["integer", "null"]},
+                "conv_tol": {"type": ["number", "integer", "null"]},
+                "level_shift": {"type": ["number", "integer", "null"]},
+                "damping": {"type": ["number", "integer", "null"]},
+                "diis": {"type": ["boolean", "integer", "null"]},
+                "force_restricted": {"type": ["boolean", "null"]},
+                "force_unrestricted": {"type": ["boolean", "null"]},
+            },
+            "additionalProperties": True,
+        },
+        "single_point": {
+            "type": ["object", "null"],
+            "required": [],
+            "properties": {
+                "basis": {"type": ["string", "null"]},
+                "xc": {"type": ["string", "null"]},
+                "solvent": {"type": ["string", "null"]},
+                "solvent_model": {"type": ["string", "null"]},
+                "solvent_map": {"type": ["string", "null"]},
+                "dispersion": {"type": ["string", "null"]},
+                "scf": {
+                    "type": ["object", "null"],
+                    "required": [],
+                    "properties": {
+                        "max_cycle": {"type": ["integer", "null"]},
+                        "conv_tol": {"type": ["number", "integer", "null"]},
+                        "level_shift": {"type": ["number", "integer", "null"]},
+                        "damping": {"type": ["number", "integer", "null"]},
+                        "diis": {"type": ["boolean", "integer", "null"]},
+                        "force_restricted": {"type": ["boolean", "null"]},
+                        "force_unrestricted": {"type": ["boolean", "null"]},
+                    },
+                    "additionalProperties": True,
+                },
+            },
+            "additionalProperties": True,
+        },
+        "frequency": {
+            "type": ["object", "null"],
+            "required": [],
+            "properties": {
+                "dispersion": {"type": ["string", "null"]},
+                "dispersion_model": {"type": ["string", "null"]},
+            },
+            "additionalProperties": True,
+        },
+        "freq": {
+            "type": ["object", "null"],
+            "required": [],
+            "properties": {
+                "dispersion": {"type": ["string", "null"]},
+                "dispersion_model": {"type": ["string", "null"]},
+            },
+            "additionalProperties": True,
         },
         "thermo": {
             "type": "object",
@@ -206,6 +296,21 @@ RUN_CONFIG_EXAMPLES = {
     "calculation_mode": "\"calculation_mode\": \"optimization\"",
     "irc_enabled": "\"irc_enabled\": true",
     "irc": "\"irc\": {\"steps\": 10, \"step_size\": 0.05, \"force_threshold\": 0.01}",
+    "optimizer": (
+        "\"optimizer\": {\"mode\": \"minimum\", \"output_xyz\": \"ase_optimized.xyz\", "
+        "\"ase\": {\"d3_backend\": \"dftd3\", \"d3_command\": null, \"optimizer\": \"bfgs\"}}"
+    ),
+    "optimizer.ase": "\"ase\": {\"d3_backend\": \"dftd3\", \"d3_command\": null}",
+    "optimizer.ase.d3_backend": "\"d3_backend\": \"dftd3\"",
+    "optimizer.ase.d3_command_validate": "\"d3_command_validate\": true",
+    "scf": "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8}",
+    "single_point": (
+        "\"single_point\": {\"basis\": \"def2-svp\", \"xc\": \"b3lyp\", "
+        "\"solvent\": \"water\", \"dispersion\": \"d3bj\"}"
+    ),
+    "single_point.scf": "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8}",
+    "frequency": "\"frequency\": {\"dispersion\": \"d3bj\", \"dispersion_model\": \"d3bj\"}",
+    "freq": "\"freq\": {\"dispersion\": \"d3bj\", \"dispersion_model\": \"d3bj\"}",
     "thermo": "\"thermo\": {\"T\": 298.15, \"P\": 1.0, \"unit\": \"atm\"}",
     "constraints": (
         "\"constraints\": {\"bonds\": [{\"i\": 0, \"j\": 1, \"length\": 1.10}], "
