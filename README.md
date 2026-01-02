@@ -127,15 +127,51 @@ Supported Python version: **3.12**
 
 ### Recommended: Conda environment
 Default path is "install scientific stack with conda + build PySCF from source".
+```shell
+git clone https://github.com/dhsohn/DFTFlow.git
+```
 
 #### 1) Create base environment with `environment.yml`
 - Includes **Python 3.12**, toolchain/libs for PySCF build, ASE, D3/D4 dependencies.
 - TS optimization (Sella) is **required**; install `sella`.
+```shell
+conda env create -f environment.yml
+```
+```shell
+conda activate DFTFlow
+```
 
 #### 2) Use lock file (recommended for reproducibility)
 Use `conda-lock` for platform-specific locks.
+```shell
+conda install -c conda-forge conda-lock -y
+```
+```shell
+conda-lock lock -f environment.yml -p win-64
+conda-lock lock -f environment.yml -p osx-arm64
+conda-lock lock -f environment.yml -p linux-64
+```
+```shell
+conda-lock install --name dftflow conda-lock.yml
+```
 
 #### 3) Build PySCF from source
+```shell
+git clone https://github.com/pyscf/pyscf.git
+```
+```shell
+cd pyscf
+```
+```shell
+mkdir -p build
+cmake -S pyscf/lib -B build \
+  -DENABLE_SMD=ON \
+  -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
+cmake --build build -j4
+```
+```shell
+python -m pip install -e . --no-build-isolation
+```
 
 ## How to run
 
