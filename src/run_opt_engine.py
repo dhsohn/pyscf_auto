@@ -178,7 +178,13 @@ def apply_scf_settings(mf, scf_config):
                 )
             if not hasattr(mf, "density_fit"):
                 raise ValueError("Density fitting is not supported for this SCF object.")
-            mf = mf.density_fit(auxbasis=density_fit)
+            density_fit_key = density_fit.strip().lower()
+            if density_fit_key == "autoaux":
+                import pyscf.df
+
+                mf = mf.density_fit(auxbasis=pyscf.df.autoaux(mf.mol))
+            else:
+                mf = mf.density_fit(auxbasis=density_fit)
         else:
             raise ValueError(
                 "Config 'scf.extra.density_fit' must be a boolean or a string."
