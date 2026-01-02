@@ -4,6 +4,7 @@ channels:
 dependencies:
   - python=3.12
   - git
+  - pip
   - make
   - cmake
   - ninja
@@ -15,7 +16,7 @@ dependencies:
   - xcfun
   - libcint
   - toml
-  - yaml
+  - pyyaml
   - h5py
   - scipy
   - numpy
