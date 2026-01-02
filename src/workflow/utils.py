@@ -141,6 +141,30 @@ def _normalize_solvent_settings(stage_label, solvent_name, solvent_model):
     return solvent_name, solvent_model
 
 
+def _disable_smd_solvent_settings(
+    stage_label, solvent_name, solvent_model, *, interactive=False
+):
+    if not solvent_model:
+        return solvent_name, solvent_model
+    if str(solvent_model).lower() != "smd":
+        return solvent_name, solvent_model
+    if interactive:
+        return solvent_name, solvent_model
+    if solvent_name and not _is_vacuum_solvent(solvent_name):
+        logging.warning(
+            "%s stage requested SMD, but SMD is disabled in conda builds. "
+            "Falling back to PCM.",
+            stage_label,
+        )
+        return solvent_name, "pcm"
+    logging.warning(
+        "%s stage requested SMD, but SMD is disabled in conda builds. "
+        "Ignoring solvent model.",
+        stage_label,
+    )
+    return solvent_name, None
+
+
 def _evaluate_irc_profile(
     profile,
     ts_energy_ev=None,

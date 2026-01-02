@@ -47,6 +47,7 @@ from .stage_scan import run_scan_stage
 from .stage_sp import run_single_point_stage
 from .types import RunContext
 from .utils import (
+    _disable_smd_solvent_settings,
     _is_vacuum_solvent,
     _normalize_dispersion_settings,
     _normalize_frequency_dispersion_mode,
@@ -250,6 +251,12 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                 solvent_name,
                 solvent_model,
             )
+            solvent_name, solvent_model = _disable_smd_solvent_settings(
+                calculation_label,
+                solvent_name,
+                solvent_model,
+                interactive=args.interactive,
+            )
 
             eps = None
             if solvent_name:
@@ -346,6 +353,12 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
 
             sp_eps = None
             sp_solvent_key = None
+            sp_solvent_name, sp_solvent_model = _disable_smd_solvent_settings(
+                "Single-point",
+                sp_solvent_name,
+                sp_solvent_model,
+                interactive=args.interactive,
+            )
             if sp_solvent_name:
                 sp_solvent_key = sp_solvent_name.lower()
                 if not _is_vacuum_solvent(sp_solvent_key):

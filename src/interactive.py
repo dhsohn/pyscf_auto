@@ -25,7 +25,7 @@ XC_FUNCTIONAL_OPTIONS = [
     "pbe",
     "b97-d",
 ]
-SOLVENT_MODEL_OPTIONS = ["pcm", "smd", "none (vacuum)"]
+SOLVENT_MODEL_OPTIONS = ["pcm", "none (vacuum)"]
 DISPERSION_MODEL_OPTIONS = ["none (disabled)", "d3bj", "d3zero", "d4"]
 CALCULATION_MODE_OPTIONS = [
     "Geometry optimization",
@@ -309,11 +309,13 @@ def _prompt_interactive_config(args):
             }[calculation_mode],
             config.get("dispersion"),
         )
+    default_solvent_model = config.get("solvent_model")
+    if isinstance(default_solvent_model, str) and default_solvent_model.lower() == "smd":
+        default_solvent_model = None
     solvent_model = _prompt_choice(
         "Select a solvent model:",
         SOLVENT_MODEL_OPTIONS,
-        allow_custom=True,
-        default_value=config.get("solvent_model"),
+        default_value=default_solvent_model,
     )
     if isinstance(solvent_model, str) and solvent_model.lower() in (
         "none",
@@ -371,7 +373,6 @@ def _prompt_interactive_config(args):
             sp_solvent_model = _prompt_choice(
                 "Select a solvent model for the single-point calculation:",
                 SOLVENT_MODEL_OPTIONS,
-                allow_custom=True,
                 default_value=solvent_model,
             )
             sp_dispersion = _prompt_dispersion(
