@@ -2,8 +2,8 @@ import json
 import logging
 import time
 
-from ..run_opt_engine import compute_frequencies
-from ..qcschema_export import export_qcschema_result
+from run_opt_engine import compute_frequencies
+from qcschema_export import export_qcschema_result
 from .events import finalize_metadata
 from .utils import (
     _frequency_units,

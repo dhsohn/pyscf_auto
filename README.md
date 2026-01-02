@@ -2,7 +2,7 @@
 
 A lightweight workflow script that combines PySCF (DFT/SCF/gradient/Hessian) with ASE (optimization driver) to run **geometry optimization (minima/transition states), single-point (SP) energy, and frequency analysis** in one go.
 
-- Entry point: `dftflow` CLI (implementation in `run_opt.py`, modules in the `dftflow_core/` package)
+- Entry point: `dftflow` CLI (implementation in `run_opt.py`, modules in the `src/` directory)
 - Default config template: `run_config.json`
 - Outputs are organized under `runs/YYYY-MM-DD_HHMMSS/` per execution.
 
@@ -16,7 +16,7 @@ Key design goals:
 - **Experimental extensibility**: scans/IRC/thermochemistry can continue in the same execution context.
 
 ### Execution flow (summary)
-1. **Input/config loading**: `dftflow_core/run_opt.py` parses CLI args and `dftflow_core/run_opt_config.py` loads/validates JSON.
+1. **Input/config loading**: `src/run_opt.py` parses CLI args and `src/run_opt_config.py` loads/validates JSON.
 2. **Structure/charge/spin preparation**: reads XYZ + metadata; estimates `charge`/`multiplicity` if absent.
 3. **Chemistry engine setup**: `run_opt_engine.py` applies PySCF settings (basis, functional, SCF options, solvent model, etc.).
 4. **Optimizer selection/run**:
@@ -108,7 +108,7 @@ Example: 2D scan + custom grid
 ```
 .
 ├─ run_opt.py                 # main CLI/workflow wrapper
-├─ src/dftflow_core/
+├─ src/
 │  ├─ run_opt.py               # main CLI/workflow
 │  ├─ run_opt_engine.py        # PySCF SP/frequency/solvent logic
 │  ├─ run_opt_dispersion.py    # D3/D4 parsing & backend mapping

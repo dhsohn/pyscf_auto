@@ -8,8 +8,11 @@ import os
 import sys
 from pathlib import Path
 
-from . import cli, interactive, queue, workflow
-from .run_opt_config import (
+import cli
+import interactive
+import queue
+import workflow
+from run_opt_config import (
     DEFAULT_QUEUE_LOCK_PATH,
     DEFAULT_QUEUE_PATH,
     DEFAULT_QUEUE_RUNNER_LOCK_PATH,

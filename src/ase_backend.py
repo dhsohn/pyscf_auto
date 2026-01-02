@@ -1,12 +1,12 @@
-from .run_opt_engine import (
+from run_opt_engine import (
     apply_scf_checkpoint,
     apply_scf_settings,
     apply_solvent_model,
     normalize_xc_functional,
     select_ks_type,
 )
-from .run_opt_dispersion import load_d3_calculator, parse_dispersion_settings
-from .run_opt_resources import ensure_parent_dir, resolve_run_path
+from run_opt_dispersion import load_d3_calculator, parse_dispersion_settings
+from run_opt_resources import ensure_parent_dir, resolve_run_path
 
 
 def _build_atom_spec_from_ase(atoms):

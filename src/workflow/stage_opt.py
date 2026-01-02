@@ -6,18 +6,18 @@ import time
 import traceback
 from datetime import datetime
 
-from ..ase_backend import _run_ase_irc, _run_ase_optimizer
-from ..queue import record_status_event
-from ..run_opt_engine import (
+from ase_backend import _run_ase_irc, _run_ase_optimizer
+from queue import record_status_event
+from run_opt_engine import (
     compute_frequencies,
     compute_imaginary_mode,
     compute_single_point_energy,
     load_xyz,
     run_capability_check,
 )
-from ..qcschema_export import export_qcschema_result
-from ..run_opt_logging import ensure_stream_newlines
-from ..run_opt_metadata import (
+from qcschema_export import export_qcschema_result
+from run_opt_logging import ensure_stream_newlines
+from run_opt_metadata import (
     build_run_summary,
     collect_git_metadata,
     compute_file_hash,
@@ -28,7 +28,7 @@ from ..run_opt_metadata import (
     write_optimized_xyz,
     write_run_metadata,
 )
-from ..run_opt_resources import collect_environment_snapshot, ensure_parent_dir, resolve_run_path
+from run_opt_resources import collect_environment_snapshot, ensure_parent_dir, resolve_run_path
 from .types import MoleculeContext, RunContext
 from .utils import (
     _atoms_to_atom_spec,

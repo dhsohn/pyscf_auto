@@ -10,14 +10,14 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
-from .run_opt_config import (
+from run_opt_config import (
     DEFAULT_QUEUE_LOCK_PATH,
     DEFAULT_QUEUE_PATH,
     DEFAULT_QUEUE_RUNNER_LOCK_PATH,
     DEFAULT_RUN_METADATA_PATH,
 )
-from .run_opt_metadata import write_run_metadata
-from .run_opt_resources import ensure_parent_dir
+from run_opt_metadata import write_run_metadata
+from run_opt_resources import ensure_parent_dir
 
 
 def _queue_priority_value(entry):

@@ -3,7 +3,7 @@ import json
 import logging
 import time
 
-from ..ase_backend import _run_ase_irc
+from ase_backend import _run_ase_irc
 from .events import finalize_metadata
 from .utils import _evaluate_irc_profile
 

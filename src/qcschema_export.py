@@ -3,10 +3,10 @@ import os
 import socket
 from typing import Any, Mapping
 
-from .run_opt_engine import load_xyz, normalized_symbol
-from .run_opt_metadata import collect_git_metadata, get_package_version
-from .run_opt_resources import collect_environment_snapshot
-from .run_opt_resources import ensure_parent_dir
+from run_opt_engine import load_xyz, normalized_symbol
+from run_opt_metadata import collect_git_metadata, get_package_version
+from run_opt_resources import collect_environment_snapshot
+from run_opt_resources import ensure_parent_dir
 
 HARTREE_TO_EV = 27.211386245988
 

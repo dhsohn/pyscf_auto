@@ -14,17 +14,32 @@ dependencies = ["jsonschema>=4.18", "PyYAML>=6.0"]
 dev = ["pytest", "ruff", "mypy"]
 
 [project.scripts]
-dftflow = "dftflow_core.run_opt:main"
+dftflow = "run_opt:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+py-modules = [
+    "ase_backend",
+    "cli",
+    "interactive",
+    "qcschema_export",
+    "queue",
+    "run_opt",
+    "run_opt_config",
+    "run_opt_dispersion",
+    "run_opt_engine",
+    "run_opt_logging",
+    "run_opt_metadata",
+    "run_opt_resources",
+    "run_opt_utils",
+]
 
 [tool.setuptools.package-data]
-dftflow_core = ["solvent_dielectric.json"]
+"" = ["solvent_dielectric.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["dftflow_core"]
+include = ["workflow"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B"]

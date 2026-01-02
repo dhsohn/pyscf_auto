@@ -2,10 +2,10 @@ import logging
 import os
 import re
 
-from .run_opt_config import DEFAULT_CHARGE, DEFAULT_MULTIPLICITY, DEFAULT_SPIN
-from .run_opt_dispersion import load_d3_calculator, parse_dispersion_settings
-from .run_opt_resources import ensure_parent_dir, resolve_run_path
-from .run_opt_utils import extract_step_count
+from run_opt_config import DEFAULT_CHARGE, DEFAULT_MULTIPLICITY, DEFAULT_SPIN
+from run_opt_dispersion import load_d3_calculator, parse_dispersion_settings
+from run_opt_resources import ensure_parent_dir, resolve_run_path
+from run_opt_utils import extract_step_count
 
 
 def normalize_xc_functional(xc):

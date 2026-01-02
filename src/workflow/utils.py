@@ -3,8 +3,8 @@ import logging
 import os
 import re
 
-from ..run_opt_metadata import get_package_version, write_checkpoint
-from ..run_opt_resources import resolve_run_path
+from run_opt_metadata import get_package_version, write_checkpoint
+from run_opt_resources import resolve_run_path
 
 
 def _xc_includes_dispersion(xc):

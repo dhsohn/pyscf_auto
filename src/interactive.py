@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from .run_opt_engine import normalize_xc_functional
-from .run_opt_config import DEFAULT_SOLVENT_MAP_PATH, load_run_config, load_solvent_map
+from run_opt_engine import normalize_xc_functional
+from run_opt_config import DEFAULT_SOLVENT_MAP_PATH, load_run_config, load_solvent_map
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]

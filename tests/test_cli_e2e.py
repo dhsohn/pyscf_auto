@@ -14,7 +14,7 @@ def run_cli(tmp_path, args):
         [str(REPO_ROOT / "src"), env.get("PYTHONPATH", "")]
     ).strip(os.pathsep)
     return subprocess.run(
-        [sys.executable, "-m", "dftflow_core.run_opt", *args],
+        [sys.executable, "-m", "run_opt", *args],
         cwd=tmp_path,
         env=env,
         capture_output=True,

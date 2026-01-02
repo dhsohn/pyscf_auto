@@ -3,17 +3,17 @@ import sys
 import traceback
 from datetime import datetime
 
-from ..queue import (
+from queue import (
     enqueue_run,
     ensure_queue_runner_started,
     record_status_event,
 )
-from ..run_opt_config import (
+from run_opt_config import (
     DEFAULT_QUEUE_LOCK_PATH,
     DEFAULT_QUEUE_PATH,
     DEFAULT_QUEUE_RUNNER_LOG_PATH,
 )
-from ..run_opt_metadata import write_run_metadata
+from run_opt_metadata import write_run_metadata
 from .types import RunContext
 
 

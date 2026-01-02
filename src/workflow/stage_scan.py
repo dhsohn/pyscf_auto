@@ -6,17 +6,17 @@ import os
 import time
 from datetime import datetime
 
-from ..ase_backend import _run_ase_optimizer
-from ..queue import record_status_event
-from ..run_opt_engine import compute_single_point_energy, run_capability_check
-from ..run_opt_metadata import (
+from ase_backend import _run_ase_optimizer
+from queue import record_status_event
+from run_opt_engine import compute_single_point_energy, run_capability_check
+from run_opt_metadata import (
     collect_git_metadata,
     compute_file_hash,
     compute_text_hash,
     get_package_version,
     write_run_metadata,
 )
-from ..run_opt_resources import collect_environment_snapshot, resolve_run_path
+from run_opt_resources import collect_environment_snapshot, resolve_run_path
 from .events import finalize_metadata
 from .types import MoleculeContext, RunContext
 from .utils import (

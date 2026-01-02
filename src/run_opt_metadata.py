@@ -7,8 +7,8 @@ import subprocess
 import tempfile
 from importlib import metadata as importlib_metadata
 
-from .run_opt_resources import ensure_parent_dir
-from .run_opt_utils import extract_step_count
+from run_opt_resources import ensure_parent_dir
+from run_opt_utils import extract_step_count
 
 RUN_METADATA_SCHEMA_VERSION = 1
 

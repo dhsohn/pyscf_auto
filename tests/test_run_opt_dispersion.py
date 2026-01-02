@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from dftflow_core import run_opt_dispersion
+import run_opt_dispersion
 
 
 @pytest.mark.parametrize(

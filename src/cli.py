@@ -1,7 +1,7 @@
 import argparse
 import warnings
 
-from .run_opt_config import (
+from run_opt_config import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_SOLVENT_MAP_PATH,
 )

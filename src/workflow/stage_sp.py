@@ -1,8 +1,8 @@
 import logging
 import time
 
-from ..run_opt_engine import compute_single_point_energy
-from ..qcschema_export import export_qcschema_result
+from run_opt_engine import compute_single_point_energy
+from qcschema_export import export_qcschema_result
 from .events import finalize_metadata
 from .utils import _update_checkpoint_scf
 

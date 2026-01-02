@@ -3,7 +3,7 @@ import os
 import uuid
 from datetime import datetime
 
-from ..run_opt_config import (
+from run_opt_config import (
     DEFAULT_EVENT_LOG_PATH,
     DEFAULT_FREQUENCY_PATH,
     DEFAULT_IRC_PATH,
@@ -18,14 +18,14 @@ from ..run_opt_config import (
     DEFAULT_THREAD_COUNT,
     RunConfig,
 )
-from ..run_opt_engine import (
+from run_opt_engine import (
     load_xyz,
     normalize_xc_functional,
     select_ks_type,
     total_electron_count,
 )
-from ..run_opt_metadata import write_checkpoint
-from ..run_opt_resources import (
+from run_opt_metadata import write_checkpoint
+from run_opt_resources import (
     create_run_directory,
     ensure_parent_dir,
     format_log_path,

@@ -6,8 +6,8 @@ import sys
 import time
 from datetime import datetime
 
-from ..queue import record_status_event, register_foreground_run, update_queue_status
-from ..run_opt_config import (
+from queue import record_status_event, register_foreground_run, update_queue_status
+from run_opt_config import (
     DEFAULT_SOLVENT_MAP_PATH,
     DEFAULT_QUEUE_LOCK_PATH,
     DEFAULT_QUEUE_PATH,
@@ -16,7 +16,7 @@ from ..run_opt_config import (
     load_solvent_map_from_path,
     load_solvent_map_from_resource,
 )
-from ..run_opt_engine import (
+from run_opt_engine import (
     apply_scf_settings,
     apply_solvent_model,
     compute_imaginary_mode,
@@ -24,15 +24,15 @@ from ..run_opt_engine import (
     run_capability_check,
     select_ks_type,
 )
-from ..run_opt_logging import ensure_stream_newlines, setup_logging_context
-from ..run_opt_metadata import (
+from run_opt_logging import ensure_stream_newlines, setup_logging_context
+from run_opt_metadata import (
     collect_git_metadata,
     compute_file_hash,
     compute_text_hash,
     get_package_version,
     write_run_metadata,
 )
-from ..run_opt_resources import (
+from run_opt_resources import (
     apply_memory_limit,
     apply_thread_settings,
     collect_environment_snapshot,
