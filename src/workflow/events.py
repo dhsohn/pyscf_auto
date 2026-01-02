@@ -3,7 +3,7 @@ import sys
 import traceback
 from datetime import datetime
 
-from queue import (
+from run_queue import (
     enqueue_run,
     ensure_queue_runner_started,
     record_status_event,

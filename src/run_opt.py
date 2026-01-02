@@ -10,7 +10,7 @@ from pathlib import Path
 
 import cli
 import interactive
-import queue
+import run_queue
 import workflow
 from run_opt_config import (
     DEFAULT_QUEUE_LOCK_PATH,
@@ -175,14 +175,14 @@ def main():
 
         if args.command == "queue":
             if args.queue_command == "status":
-                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-                with queue.queue_lock(DEFAULT_QUEUE_LOCK_PATH):
-                    queue_state = queue.load_queue(DEFAULT_QUEUE_PATH)
-                queue.format_queue_status(queue_state)
+                run_queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                with run_queue.queue_lock(DEFAULT_QUEUE_LOCK_PATH):
+                    queue_state = run_queue.load_queue(DEFAULT_QUEUE_PATH)
+                run_queue.format_queue_status(queue_state)
                 return
             if args.queue_command == "cancel":
-                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-                canceled, error = queue.cancel_queue_entry(
+                run_queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                canceled, error = run_queue.cancel_queue_entry(
                     DEFAULT_QUEUE_PATH,
                     DEFAULT_QUEUE_LOCK_PATH,
                     args.run_id,
@@ -192,8 +192,8 @@ def main():
                 print(f"Canceled queued run: {args.run_id}")
                 return
             if args.queue_command == "retry":
-                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-                retried, error = queue.requeue_queue_entry(
+                run_queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                retried, error = run_queue.requeue_queue_entry(
                     DEFAULT_QUEUE_PATH,
                     DEFAULT_QUEUE_LOCK_PATH,
                     args.run_id,
@@ -204,16 +204,16 @@ def main():
                 print(f"Re-queued run: {args.run_id}")
                 return
             if args.queue_command == "requeue-failed":
-                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-                count = queue.requeue_failed_entries(
+                run_queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                count = run_queue.requeue_failed_entries(
                     DEFAULT_QUEUE_PATH, DEFAULT_QUEUE_LOCK_PATH
                 )
                 print(f"Re-queued failed runs: {count}")
                 return
             if args.queue_command == "prune":
-                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-                queue.load_queue(DEFAULT_QUEUE_PATH)
-                removed, remaining = queue.prune_queue_entries(
+                run_queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                run_queue.load_queue(DEFAULT_QUEUE_PATH)
+                removed, remaining = run_queue.prune_queue_entries(
                     DEFAULT_QUEUE_PATH,
                     DEFAULT_QUEUE_LOCK_PATH,
                     args.keep_days,
@@ -222,8 +222,8 @@ def main():
                 print(f"Pruned queue entries: {removed} removed, {remaining} remaining.")
                 return
             if args.queue_command == "archive":
-                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-                archive_path = queue.archive_queue(
+                run_queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                archive_path = run_queue.archive_queue(
                     DEFAULT_QUEUE_PATH,
                     DEFAULT_QUEUE_LOCK_PATH,
                     args.path,
@@ -235,10 +235,10 @@ def main():
             if args.recent and args.run_path:
                 raise ValueError("--recent cannot be used with a run path.")
             if args.recent:
-                queue.print_recent_statuses(args.recent)
+                run_queue.print_recent_statuses(args.recent)
                 return
             if args.run_path:
-                queue.print_status(args.run_path, DEFAULT_RUN_METADATA_PATH)
+                run_queue.print_status(args.run_path, DEFAULT_RUN_METADATA_PATH)
                 return
             raise ValueError("status requires a run path or --recent.")
 
@@ -258,7 +258,7 @@ def main():
 
         run_in_background = bool(args.background and not args.no_background)
         if args.queue_runner:
-            queue.run_queue_worker(
+            run_queue.run_queue_worker(
                 os.path.abspath(sys.argv[0]),
                 DEFAULT_QUEUE_PATH,
                 DEFAULT_QUEUE_LOCK_PATH,

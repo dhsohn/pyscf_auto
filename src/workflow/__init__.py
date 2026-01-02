@@ -6,7 +6,7 @@ import sys
 import time
 from datetime import datetime
 
-from queue import record_status_event, register_foreground_run, update_queue_status
+from run_queue import record_status_event, register_foreground_run, update_queue_status
 from run_opt_config import (
     DEFAULT_SOLVENT_MAP_PATH,
     DEFAULT_QUEUE_LOCK_PATH,

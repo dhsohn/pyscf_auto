@@ -7,7 +7,7 @@ import traceback
 from datetime import datetime
 
 from ase_backend import _run_ase_irc, _run_ase_optimizer
-from queue import record_status_event
+from run_queue import record_status_event
 from run_opt_engine import (
     compute_frequencies,
     compute_imaginary_mode,

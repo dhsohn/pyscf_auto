@@ -2,6 +2,7 @@ import json
 import os
 import re
 import tomllib
+from pathlib import Path
 from importlib import resources
 from importlib.resources.abc import Traversable
 from dataclasses import dataclass
@@ -762,9 +763,13 @@ def resolve_solvent_map_path(map_path):
 
 
 def resolve_solvent_map_resource():
+    module_dir = Path(__file__).resolve().parent
+    candidate = module_dir / DEFAULT_SOLVENT_MAP_PATH
+    if candidate.is_file():
+        return candidate
     try:
         resource = resources.files(__package__).joinpath(DEFAULT_SOLVENT_MAP_PATH)
-    except (ModuleNotFoundError, AttributeError):
+    except (ModuleNotFoundError, AttributeError, TypeError):
         return None
     if resource.is_file():
         return resource

@@ -23,7 +23,7 @@ py-modules = [
     "cli",
     "interactive",
     "qcschema_export",
-    "queue",
+    "run_queue",
     "run_opt",
     "run_opt_config",
     "run_opt_dispersion",

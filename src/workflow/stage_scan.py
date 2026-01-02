@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 
 from ase_backend import _run_ase_optimizer
-from queue import record_status_event
+from run_queue import record_status_event
 from run_opt_engine import compute_single_point_energy, run_capability_check
 from run_opt_metadata import (
     collect_git_metadata,
