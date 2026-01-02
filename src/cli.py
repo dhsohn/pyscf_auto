@@ -11,7 +11,7 @@ def _normalize_cli_args(argv):
     if not argv:
         return argv
     command = argv[0]
-    commands = {"run", "doctor", "validate-config", "status", "queue"}
+    commands = {"run", "doctor", "validate-config", "status", "queue", "smoke-test"}
     if command in {"-h", "--help"}:
         return argv
     if command in commands:
@@ -246,6 +246,23 @@ def build_parser():
             "Path to JSON config file for runtime settings "
             f"(default: {DEFAULT_CONFIG_PATH})."
         ),
+    )
+
+    smoke_parser = subparsers.add_parser(
+        "smoke-test",
+        help="Run a minimal water single-point calculation (1 SCF cycle).",
+    )
+    smoke_parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_PATH,
+        help=(
+            "Base config file to derive the smoke-test settings "
+            f"(default: {DEFAULT_CONFIG_PATH})."
+        ),
+    )
+    smoke_parser.add_argument(
+        "--run-dir",
+        help="Optional base run directory for smoke-test output.",
     )
 
     status_parser = subparsers.add_parser(

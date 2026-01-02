@@ -248,7 +248,22 @@ Output:
 Success criteria:
 - `Config validation passed: <config>` and exit code 0.
 
-### 2) pytest unit tests
+### 2) Water single-cycle smoke test
+Goal: run a tiny calculation with one SCF cycle to sanity-check the runtime stack.
+
+Run smoke tests (all modes + all combinations):
+
+```
+dftflow smoke-test
+```
+
+Output:
+- Smoke-test run directory created under `runs/` (each case writes a subdirectory).
+
+Success criteria:
+- `Smoke test completed: <run_dir> (<N> cases)` and exit code 0.
+
+### 3) pytest unit tests
 Goal: regression coverage for config parser and dispersion logic.
 
 Run:
