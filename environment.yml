@@ -15,10 +15,12 @@ dependencies:
   - xcfun
   - libcint
   - toml
+  - yaml
   - h5py
   - scipy
   - numpy
   - compilers
+  - pyscf
   - ase
   - dftd3-python
   - dftd4
