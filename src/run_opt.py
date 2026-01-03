@@ -225,6 +225,21 @@ def _find_latest_smoke_log_mtime(base_run_dir):
     return latest
 
 
+def _smoke_test_has_failures(base_run_dir):
+    for root, _dirs, files in os.walk(base_run_dir):
+        if DEFAULT_RUN_METADATA_PATH not in files:
+            continue
+        metadata_path = os.path.join(root, DEFAULT_RUN_METADATA_PATH)
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as metadata_file:
+                metadata = json.load(metadata_file)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if metadata.get("status") == "failed":
+            return True
+    return False
+
+
 def _run_smoke_test_watch(args):
     if not args.run_dir:
         args.run_dir = create_run_directory()
@@ -260,7 +275,16 @@ def _run_smoke_test_watch(args):
                 if return_code == 0:
                     print(f"Smoke test completed: {base_run_dir}")
                     return
-                raise SystemExit(return_code)
+                if _smoke_test_has_failures(base_run_dir):
+                    raise SystemExit(return_code)
+                logging.warning(
+                    "Smoke-test process exited unexpectedly (code %s); restarting.",
+                    return_code,
+                )
+                restarts += 1
+                if args.watch_max_restarts and restarts > args.watch_max_restarts:
+                    raise SystemExit("Smoke-test watch exceeded max restarts.")
+                break
 
             latest = _find_latest_smoke_log_mtime(base_run_dir)
             now = time.time()
