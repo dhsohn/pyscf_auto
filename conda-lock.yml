@@ -14,7 +14,7 @@ version: 1
 metadata:
   content_hash:
     linux-64: f4765e2ae872fe2af3ad5dd97a04035d131b84ed88b69f5b78eef2192d86a19e
-    osx-arm64: 4db620d2930943c04b3e17c693987aacdddafc9c7cb2f528632835d4eea6ff2f
+    osx-arm64: e5a1c792bb2a99314a7384af4e3add5f444bf63b5c8d5adc8a63c517ed8efe05
   channels:
   - url: conda-forge
     used_env_vars: []
@@ -3760,6 +3760,20 @@ package:
     sha256: b67692da1c0084516ac1c9ada4d55eaf3c5891b54980f30f3f444541c2706f1e
   category: main
   optional: false
+- name: pip
+  version: '25.3'
+  manager: conda
+  platform: osx-arm64
+  dependencies:
+    python: '>=3.10,<3.13.0a0'
+    setuptools: ''
+    wheel: ''
+  url: https://conda.anaconda.org/conda-forge/noarch/pip-25.3-pyh8b19718_0.conda
+  hash:
+    md5: c55515ca43c6444d2572e0f0d93cb6b9
+    sha256: b67692da1c0084516ac1c9ada4d55eaf3c5891b54980f30f3f444541c2706f1e
+  category: main
+  optional: false
 - name: pluggy
   version: 1.6.0
   manager: conda
@@ -4063,6 +4077,21 @@ package:
   hash:
     md5: c3efd25ac4d74b1584d2f7a57195ddf1
     sha256: 80677180dd3c22deb7426ca89d6203f1c7f1f256f2d5a94dc210f6e758229809
+  category: main
+  optional: false
+- name: pyyaml
+  version: 6.0.3
+  manager: conda
+  platform: osx-arm64
+  dependencies:
+    __osx: '>=11.0'
+    python: '>=3.12,<3.13.0a0'
+    python_abi: 3.12.*
+    yaml: '>=0.2.5,<0.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/osx-arm64/pyyaml-6.0.3-py312h5748b74_0.conda
+  hash:
+    md5: 6a2d7f8a026223c2fa1027c96c615752
+    sha256: 690943c979a5bf014348933a68cd39e3bb9114d94371c4c5d846d2daaa82c7d9
   category: main
   optional: false
 - name: qhull
@@ -4591,6 +4620,18 @@ package:
   version: 0.45.1
   manager: conda
   platform: linux-64
+  dependencies:
+    python: '>=3.9'
+  url: https://conda.anaconda.org/conda-forge/noarch/wheel-0.45.1-pyhd8ed1ab_1.conda
+  hash:
+    md5: 75cb7132eb58d97896e173ef12ac9986
+    sha256: 1b34021e815ff89a4d902d879c3bd2040bc1bd6169b32e9427497fa05c55f1ce
+  category: main
+  optional: false
+- name: wheel
+  version: 0.45.1
+  manager: conda
+  platform: osx-arm64
   dependencies:
     python: '>=3.9'
   url: https://conda.anaconda.org/conda-forge/noarch/wheel-0.45.1-pyhd8ed1ab_1.conda

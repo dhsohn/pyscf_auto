@@ -1,8 +1,11 @@
+import logging
+
 from run_opt_engine import (
     apply_density_fit_setting,
     apply_scf_checkpoint,
     apply_scf_settings,
     apply_solvent_model,
+    is_density_fit_gradient_einsum_error,
     normalize_xc_functional,
     select_ks_type,
 )
@@ -54,6 +57,19 @@ def _build_pyscf_calculator(
         optimizer_mode=optimization_mode,
         multiplicity=multiplicity,
     )
+
+    def _scf_uses_density_fit(config):
+        if not config:
+            return False
+        extra = config.get("extra") or {}
+        if "density_fit" not in extra:
+            return False
+        density_fit = extra.get("density_fit")
+        if isinstance(density_fit, bool):
+            return density_fit
+        if isinstance(density_fit, str):
+            return bool(density_fit.strip())
+        return False
     dispersion_settings = (
         parse_dispersion_settings(
             dispersion_model,
@@ -72,6 +88,30 @@ def _build_pyscf_calculator(
 
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
+            self._disable_density_fit = False
+
+        def _run_scf_and_grad(self, mol, *, allow_density_fit):
+            if ks_type == "RKS":
+                mf = dft.RKS(mol)
+            else:
+                mf = dft.UKS(mol)
+            mf.xc = xc
+            density_fit_applied = False
+            if allow_density_fit:
+                mf, df_config = apply_density_fit_setting(mf, scf_config)
+                density_fit_applied = bool(df_config.get("density_fit"))
+            if solvent_model:
+                mf = apply_solvent_model(mf, solvent_model, solvent_name, solvent_eps)
+            mf, _ = apply_scf_settings(mf, scf_config, apply_density_fit=False)
+            dm0, _ = apply_scf_checkpoint(mf, scf_config, run_dir=run_dir)
+            if verbose:
+                mf.verbose = 4
+            if dm0 is not None:
+                energy_hartree = mf.kernel(dm0=dm0)
+            else:
+                energy_hartree = mf.kernel()
+            grad = mf.nuc_grad_method().kernel()
+            return energy_hartree, grad, density_fit_applied
 
         def calculate(self, atoms=None, properties=None, system_changes=all_changes):
             super().calculate(atoms, properties, system_changes)
@@ -93,23 +133,29 @@ def _build_pyscf_calculator(
                 raise
             if memory_mb:
                 mol.max_memory = memory_mb
-            if ks_type == "RKS":
-                mf = dft.RKS(mol)
-            else:
-                mf = dft.UKS(mol)
-            mf.xc = xc
-            mf, _ = apply_density_fit_setting(mf, scf_config)
-            if solvent_model:
-                mf = apply_solvent_model(mf, solvent_model, solvent_name, solvent_eps)
-            mf, _ = apply_scf_settings(mf, scf_config, apply_density_fit=False)
-            dm0, chkfile_path = apply_scf_checkpoint(mf, scf_config, run_dir=run_dir)
-            if verbose:
-                mf.verbose = 4
-            if dm0 is not None:
-                energy_hartree = mf.kernel(dm0=dm0)
-            else:
-                energy_hartree = mf.kernel()
-            grad = mf.nuc_grad_method().kernel()
+            density_fit_applied = False
+            expected_density_fit = (not self._disable_density_fit) and _scf_uses_density_fit(
+                scf_config
+            )
+            try:
+                energy_hartree, grad, density_fit_applied = self._run_scf_and_grad(
+                    mol, allow_density_fit=not self._disable_density_fit
+                )
+            except Exception as exc:
+                if (
+                    not self._disable_density_fit
+                    and (density_fit_applied or expected_density_fit)
+                    and is_density_fit_gradient_einsum_error(exc)
+                ):
+                    logging.warning(
+                        "Density-fitting gradients failed; retrying without density fitting."
+                    )
+                    self._disable_density_fit = True
+                    energy_hartree, grad, _ = self._run_scf_and_grad(
+                        mol, allow_density_fit=False
+                    )
+                else:
+                    raise
             forces = -grad * (units.Hartree / units.Bohr)
             self.results["energy"] = energy_hartree * units.Hartree
             self.results["forces"] = forces

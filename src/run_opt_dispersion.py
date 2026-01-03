@@ -206,6 +206,11 @@ def parse_dispersion_settings(
         settings = {xc_key: xc, damping_key: damping_value}
 
         other_settings, tweak_params = _split_d3_params(d3_params)
+        if damping_value == "d3zero" and tweak_params:
+            logging.debug(
+                "Ignoring DFTD3 damping tweaks for d3zero to avoid unsupported parameters."
+            )
+            tweak_params = {}
 
         # Add supported non-tweak settings.
         for key, value in other_settings.items():

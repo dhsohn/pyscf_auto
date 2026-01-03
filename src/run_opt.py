@@ -118,12 +118,38 @@ def _prepare_smoke_test_suite(args):
         [*interactive.XC_FUNCTIONAL_OPTIONS, base_config.get("xc")]
     )
     xc_options = [xc for xc in xc_options if xc]
+    try:
+        from pyscf.scf import dispersion as pyscf_dispersion
+    except ImportError:
+        pass
+    else:
+        filtered_xc = []
+        for xc in xc_options:
+            try:
+                pyscf_dispersion.parse_dft(str(xc))
+            except NotImplementedError as exc:
+                logging.warning(
+                    "Skipping XC %s in smoke tests (%s).",
+                    xc,
+                    exc,
+                )
+                continue
+            filtered_xc.append(xc)
+        xc_options = filtered_xc
     solvent_model_options = _unique_values(
         [*SMOKE_TEST_SOLVENT_MODELS, base_config.get("solvent_model")]
     )
     dispersion_options = _unique_values(
         [*SMOKE_TEST_DISPERSION_MODELS, base_config.get("dispersion")]
     )
+    if "d4" in dispersion_options:
+        try:
+            from dftd4 import ase as _dftd4_ase
+        except ImportError:
+            dispersion_options = [item for item in dispersion_options if item != "d4"]
+            logging.warning(
+                "dftd4 is not installed; skipping D4 dispersion in smoke tests."
+            )
     solvent_map_path = base_config.get("solvent_map") or DEFAULT_SOLVENT_MAP_PATH
     solvent_options = sorted(load_solvent_map(solvent_map_path).keys())
     modes = list(SMOKE_TEST_MODES)

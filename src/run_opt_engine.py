@@ -158,6 +158,13 @@ def total_electron_count(atom_spec, charge):
     return total_charge - charge
 
 
+def is_density_fit_gradient_einsum_error(exc):
+    if not isinstance(exc, ValueError):
+        return False
+    message = str(exc)
+    return "not enough values to unpack" in message and "expected 4, got 3" in message
+
+
 def _apply_density_fit_setting(mf, density_fit):
     if isinstance(density_fit, bool):
         if density_fit:
@@ -732,54 +739,82 @@ def compute_frequencies(
         multiplicity=multiplicity,
         log_override=log_override,
     )
-    if ks_type == "RKS":
-        mf_freq = dft.RKS(mol_freq)
-    else:
-        mf_freq = dft.UKS(mol_freq)
-    mf_freq.xc = xc
-    dispersion_info = None
-    mf_freq, _ = apply_density_fit_setting(mf_freq, scf_config)
-    if solvent_model is not None:
-        mf_freq = apply_solvent_model(
-            mf_freq,
-            solvent_model,
-            solvent_name,
-            solvent_eps,
-        )
-    if verbose:
-        mf_freq.verbose = 4
-    mf_freq, _ = apply_scf_settings(mf_freq, scf_config, apply_density_fit=False)
-    dm0, _ = apply_scf_checkpoint(mf_freq, scf_config, run_dir=run_dir)
-    if dm0 is not None:
-        energy = mf_freq.kernel(dm0=dm0)
-    else:
-        energy = mf_freq.kernel()
-    if dispersion is not None and dispersion_hessian_mode == "none":
-        dispersion_settings = parse_dispersion_settings(
-            dispersion, xc, charge=mol_freq.charge, spin=mol_freq.spin
-        )
-        positions = mol_freq.atom_coords(unit="Angstrom")
-        if hasattr(mol_freq, "atom_symbols"):
-            symbols = mol_freq.atom_symbols()
+    def _build_mf_freq(*, apply_density_fit):
+        if ks_type == "RKS":
+            mf_freq = dft.RKS(mol_freq)
         else:
-            symbols = [mol_freq.atom_symbol(i) for i in range(mol_freq.natm)]
-        atoms = Atoms(symbols=symbols, positions=positions)
-        dispersion_energy_ev, dispersion_backend = _compute_dispersion_energy(
-            atoms, dispersion_settings
-        )
-        dispersion_energy_hartree = dispersion_energy_ev / units.Hartree
-        energy += dispersion_energy_hartree
-        dispersion_info = {
-            "model": dispersion,
-            "energy_hartree": dispersion_energy_hartree,
-            "energy_ev": dispersion_energy_ev,
-            "backend": dispersion_backend,
-            "hessian_mode": dispersion_hessian_mode,
-        }
-    if hasattr(mf_freq, "Hessian"):
-        hess = mf_freq.Hessian().kernel()
-    else:
-        hess = pyscf_hessian.Hessian(mf_freq).kernel()
+            mf_freq = dft.UKS(mol_freq)
+        mf_freq.xc = xc
+        density_fit_applied = False
+        if apply_density_fit:
+            mf_freq, df_config = apply_density_fit_setting(mf_freq, scf_config)
+            density_fit_applied = bool(df_config.get("density_fit"))
+        if solvent_model is not None:
+            mf_freq = apply_solvent_model(
+                mf_freq,
+                solvent_model,
+                solvent_name,
+                solvent_eps,
+            )
+        if verbose:
+            mf_freq.verbose = 4
+        mf_freq, _ = apply_scf_settings(mf_freq, scf_config, apply_density_fit=False)
+        return mf_freq, density_fit_applied
+
+    def _run_scf(mf_freq):
+        dm0, _ = apply_scf_checkpoint(mf_freq, scf_config, run_dir=run_dir)
+        if dm0 is not None:
+            return mf_freq.kernel(dm0=dm0)
+        return mf_freq.kernel()
+
+    def _apply_dispersion(energy_value):
+        dispersion_info = None
+        if dispersion is not None and dispersion_hessian_mode == "none":
+            dispersion_settings = parse_dispersion_settings(
+                dispersion, xc, charge=mol_freq.charge, spin=mol_freq.spin
+            )
+            positions = mol_freq.atom_coords(unit="Angstrom")
+            if hasattr(mol_freq, "atom_symbols"):
+                symbols = mol_freq.atom_symbols()
+            else:
+                symbols = [mol_freq.atom_symbol(i) for i in range(mol_freq.natm)]
+            atoms = Atoms(symbols=symbols, positions=positions)
+            dispersion_energy_ev, dispersion_backend = _compute_dispersion_energy(
+                atoms, dispersion_settings
+            )
+            dispersion_energy_hartree = dispersion_energy_ev / units.Hartree
+            energy_value += dispersion_energy_hartree
+            dispersion_info = {
+                "model": dispersion,
+                "energy_hartree": dispersion_energy_hartree,
+                "energy_ev": dispersion_energy_ev,
+                "backend": dispersion_backend,
+                "hessian_mode": dispersion_hessian_mode,
+            }
+        return energy_value, dispersion_info
+
+    mf_freq, density_fit_applied = _build_mf_freq(apply_density_fit=True)
+    energy = _run_scf(mf_freq)
+    energy, dispersion_info = _apply_dispersion(energy)
+    try:
+        if hasattr(mf_freq, "Hessian"):
+            hess = mf_freq.Hessian().kernel()
+        else:
+            hess = pyscf_hessian.Hessian(mf_freq).kernel()
+    except Exception as exc:
+        if density_fit_applied and is_density_fit_gradient_einsum_error(exc):
+            logging.warning(
+                "Density-fitting Hessian failed; retrying without density fitting."
+            )
+            mf_freq, _ = _build_mf_freq(apply_density_fit=False)
+            energy = _run_scf(mf_freq)
+            energy, dispersion_info = _apply_dispersion(energy)
+            if hasattr(mf_freq, "Hessian"):
+                hess = mf_freq.Hessian().kernel()
+            else:
+                hess = pyscf_hessian.Hessian(mf_freq).kernel()
+        else:
+            raise
     harmonic = pyscf_thermo.harmonic_analysis(mol_freq, hess, imaginary_freq=False)
     freq_wavenumber = None
     freq_au = None
@@ -824,13 +859,23 @@ def compute_frequencies(
         pressure_unit = thermo_settings.get("unit")
         thermo_result = None
         if freq_au is not None:
-            thermo_result = pyscf_thermo.thermo(
-                mol_freq,
-                freq_au,
-                temperature=temperature,
-                pressure=pressure,
-                unit=pressure_unit,
-            )
+            try:
+                thermo_result = pyscf_thermo.thermo(
+                    mf_freq,
+                    freq_au,
+                    temperature=temperature,
+                    pressure=pressure,
+                    unit=pressure_unit,
+                )
+            except TypeError as exc:
+                if "unit" not in str(exc):
+                    raise
+                thermo_result = pyscf_thermo.thermo(
+                    mf_freq,
+                    freq_au,
+                    temperature=temperature,
+                    pressure=pressure,
+                )
 
         def _thermo_value(keys):
             if not thermo_result:
@@ -1086,31 +1131,55 @@ def compute_imaginary_mode(
         multiplicity=multiplicity,
         log_override=log_override,
     )
-    if ks_type == "RKS":
-        mf_mode = dft.RKS(mol_mode)
-    else:
-        mf_mode = dft.UKS(mol_mode)
-    mf_mode.xc = xc
-    mf_mode, _ = apply_density_fit_setting(mf_mode, scf_config)
-    if solvent_model is not None:
-        mf_mode = apply_solvent_model(
-            mf_mode,
-            solvent_model,
-            solvent_name,
-            solvent_eps,
-        )
-    if verbose:
-        mf_mode.verbose = 4
-    mf_mode, _ = apply_scf_settings(mf_mode, scf_config, apply_density_fit=False)
-    dm0, _ = apply_scf_checkpoint(mf_mode, scf_config, run_dir=run_dir)
-    if dm0 is not None:
-        mf_mode.kernel(dm0=dm0)
-    else:
-        mf_mode.kernel()
-    if hasattr(mf_mode, "Hessian"):
-        hess = mf_mode.Hessian().kernel()
-    else:
-        hess = pyscf_hessian.Hessian(mf_mode).kernel()
+    def _build_mf_mode(*, apply_density_fit):
+        if ks_type == "RKS":
+            mf_mode = dft.RKS(mol_mode)
+        else:
+            mf_mode = dft.UKS(mol_mode)
+        mf_mode.xc = xc
+        density_fit_applied = False
+        if apply_density_fit:
+            mf_mode, df_config = apply_density_fit_setting(mf_mode, scf_config)
+            density_fit_applied = bool(df_config.get("density_fit"))
+        if solvent_model is not None:
+            mf_mode = apply_solvent_model(
+                mf_mode,
+                solvent_model,
+                solvent_name,
+                solvent_eps,
+            )
+        if verbose:
+            mf_mode.verbose = 4
+        mf_mode, _ = apply_scf_settings(mf_mode, scf_config, apply_density_fit=False)
+        return mf_mode, density_fit_applied
+
+    def _run_scf(mf_mode):
+        dm0, _ = apply_scf_checkpoint(mf_mode, scf_config, run_dir=run_dir)
+        if dm0 is not None:
+            mf_mode.kernel(dm0=dm0)
+        else:
+            mf_mode.kernel()
+
+    mf_mode, density_fit_applied = _build_mf_mode(apply_density_fit=True)
+    _run_scf(mf_mode)
+    try:
+        if hasattr(mf_mode, "Hessian"):
+            hess = mf_mode.Hessian().kernel()
+        else:
+            hess = pyscf_hessian.Hessian(mf_mode).kernel()
+    except Exception as exc:
+        if density_fit_applied and is_density_fit_gradient_einsum_error(exc):
+            logging.warning(
+                "Density-fitting Hessian failed; retrying without density fitting."
+            )
+            mf_mode, _ = _build_mf_mode(apply_density_fit=False)
+            _run_scf(mf_mode)
+            if hasattr(mf_mode, "Hessian"):
+                hess = mf_mode.Hessian().kernel()
+            else:
+                hess = pyscf_hessian.Hessian(mf_mode).kernel()
+        else:
+            raise
     return _extract_imaginary_mode_from_hessian(
         hess, mol_mode, atomic_masses, atomic_numbers
     )
@@ -1148,25 +1217,35 @@ def run_capability_check(
         multiplicity=multiplicity,
         log_override=False,
     )
-    if ks_type == "RKS":
-        mf_check = dft.RKS(mol_check)
-    else:
-        mf_check = dft.UKS(mol_check)
-    mf_check.xc = normalize_xc_functional(xc)
-    mf_check, _ = apply_density_fit_setting(mf_check, scf_config)
-    if solvent_model is not None:
-        mf_check = apply_solvent_model(
-            mf_check,
-            solvent_model,
-            solvent_name,
-            solvent_eps,
-        )
-    if verbose:
-        mf_check.verbose = 4
     scf_override = dict(scf_config or {})
     current_max = scf_override.get("max_cycle", max_scf_cycles)
     scf_override["max_cycle"] = min(current_max, max_scf_cycles)
-    mf_check, _ = apply_scf_settings(mf_check, scf_override, apply_density_fit=False)
+
+    def build_mf_check(*, apply_density_fit):
+        if ks_type == "RKS":
+            mf_check = dft.RKS(mol_check)
+        else:
+            mf_check = dft.UKS(mol_check)
+        mf_check.xc = normalize_xc_functional(xc)
+        density_fit_applied = False
+        if apply_density_fit:
+            mf_check, df_config = apply_density_fit_setting(mf_check, scf_config)
+            density_fit_applied = bool(df_config.get("density_fit"))
+        if solvent_model is not None:
+            mf_check = apply_solvent_model(
+                mf_check,
+                solvent_model,
+                solvent_name,
+                solvent_eps,
+            )
+        if verbose:
+            mf_check.verbose = 4
+        mf_check, _ = apply_scf_settings(
+            mf_check, scf_override, apply_density_fit=False
+        )
+        return mf_check, density_fit_applied
+
+    mf_check, density_fit_applied = build_mf_check(apply_density_fit=True)
     try:
         mf_check.kernel()
     except Exception as exc:
@@ -1178,11 +1257,24 @@ def run_capability_check(
     try:
         mf_check.nuc_grad_method().kernel()
     except Exception as exc:
-        raise RuntimeError(
-            "Capability check failed during nuclear gradient evaluation. "
-            "The current XC/solvent/spin combination may not support gradients. "
-            "Adjust the solvent model or use a PySCF build with gradient support."
-        ) from exc
+        if density_fit_applied and is_density_fit_gradient_einsum_error(exc):
+            try:
+                mf_check, _ = build_mf_check(apply_density_fit=False)
+                mf_check.kernel()
+                mf_check.nuc_grad_method().kernel()
+                density_fit_applied = False
+            except Exception as retry_exc:
+                raise RuntimeError(
+                    "Capability check failed during nuclear gradient evaluation. "
+                    "The current XC/solvent/spin combination may not support gradients. "
+                    "Adjust the solvent model or use a PySCF build with gradient support."
+                ) from retry_exc
+        else:
+            raise RuntimeError(
+                "Capability check failed during nuclear gradient evaluation. "
+                "The current XC/solvent/spin combination may not support gradients. "
+                "Adjust the solvent model or use a PySCF build with gradient support."
+            ) from exc
     if require_hessian:
         try:
             if hasattr(mf_check, "Hessian"):
@@ -1190,8 +1282,23 @@ def run_capability_check(
             else:
                 pyscf_hessian.Hessian(mf_check).kernel()
         except Exception as exc:
-            raise RuntimeError(
-                "Capability check failed during Hessian evaluation. "
-                "The current XC/solvent/spin combination may not support Hessians. "
-                "Disable frequency calculations or use a compatible PySCF build."
-            ) from exc
+            if density_fit_applied and is_density_fit_gradient_einsum_error(exc):
+                try:
+                    mf_check, _ = build_mf_check(apply_density_fit=False)
+                    mf_check.kernel()
+                    if hasattr(mf_check, "Hessian"):
+                        mf_check.Hessian().kernel()
+                    else:
+                        pyscf_hessian.Hessian(mf_check).kernel()
+                except Exception as retry_exc:
+                    raise RuntimeError(
+                        "Capability check failed during Hessian evaluation. "
+                        "The current XC/solvent/spin combination may not support Hessians. "
+                        "Disable frequency calculations or use a compatible PySCF build."
+                    ) from retry_exc
+            else:
+                raise RuntimeError(
+                    "Capability check failed during Hessian evaluation. "
+                    "The current XC/solvent/spin combination may not support Hessians. "
+                    "Disable frequency calculations or use a compatible PySCF build."
+                ) from exc

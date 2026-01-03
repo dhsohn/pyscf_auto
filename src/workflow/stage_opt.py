@@ -673,8 +673,10 @@ def run_optimization_stage(
             json.dump(frequency_payload, handle, indent=2)
 
     ts_energy_ev = None
-    if frequency_payload:
-        ts_energy_ev = frequency_payload.get("results", {}).get("energy")
+    if not isinstance(frequency_payload, dict):
+        frequency_payload = {}
+    freq_results = frequency_payload.get("results") or {}
+    ts_energy_ev = freq_results.get("energy")
     if ts_energy_ev is None:
         ts_energy_ev = last_scf_energy
 
