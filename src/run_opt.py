@@ -249,7 +249,10 @@ def _run_smoke_test_watch(args):
     while True:
         logging.info("Starting smoke-test watch run.")
         process = subprocess.Popen(cmd)
-        last_activity = _find_latest_smoke_log_mtime(base_run_dir) or time.time()
+        last_activity = time.time()
+        latest = _find_latest_smoke_log_mtime(base_run_dir)
+        if latest:
+            last_activity = max(last_activity, latest)
 
         while True:
             return_code = process.poll()
