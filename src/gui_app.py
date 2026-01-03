@@ -3,6 +3,7 @@ import os
 import signal
 import subprocess
 import sys
+import traceback
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -161,6 +162,14 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
         self.refresh_timer = QtCore.QTimer(self)
         self.refresh_timer.timeout.connect(self._refresh_runs)
         self.refresh_timer.start(REFRESH_INTERVAL_MS)
+
+    def _log_gui_error(self, label, exc):
+        error_path = Path(get_app_base_dir()) / "gui_errors.log"
+        error_path.parent.mkdir(parents=True, exist_ok=True)
+        with error_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"[{label}] {exc}\n")
+            handle.write(traceback.format_exc())
+            handle.write("\n")
 
     def _build_ui(self):
         toolbar = QtWidgets.QToolBar()
@@ -353,130 +362,152 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
         self.log_view.setPlainText("".join(lines))
 
     def _update_results_view(self):
-        if not self.current_run:
-            self.results_info.setText("No run selected.")
-            self.chart_view.setChart(QChart())
-            return
-        run_dir = Path(self.current_run.run_dir)
-        irc_csv = run_dir / "irc_profile.csv"
-        scan_csv = run_dir / "scan_result.csv"
-        freq_json = run_dir / "frequency_result.json"
-
-        if irc_csv.exists():
-            series = {}
-            with irc_csv.open("r", encoding="utf-8", errors="replace") as handle:
-                header = handle.readline().strip().split(",")
-                try:
-                    direction_index = header.index("direction")
-                    step_index = header.index("step")
-                    energy_index = header.index("energy_ev")
-                except ValueError:
-                    self.results_info.setText("IRC profile format not recognized.")
-                    self.chart_view.setChart(QChart())
-                    return
-                for line in handle:
-                    parts = [item.strip() for item in line.split(",")]
-                    if len(parts) <= energy_index:
-                        continue
-                    direction = parts[direction_index]
-                    try:
-                        step = float(parts[step_index])
-                        energy = float(parts[energy_index])
-                    except ValueError:
-                        continue
-                    series.setdefault(direction, []).append((step, energy))
-            chart = QChart()
-            for direction, points in series.items():
-                line_series = QLineSeries()
-                line_series.setName(direction)
-                for step, energy in points:
-                    line_series.append(step, energy)
-                chart.addSeries(line_series)
-            axis_x = QValueAxis()
-            axis_x.setTitleText("Step")
-            axis_y = QValueAxis()
-            axis_y.setTitleText("Energy (eV)")
-            chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
-            chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
-            for s in chart.series():
-                s.attachAxis(axis_x)
-                s.attachAxis(axis_y)
-            chart.legend().setVisible(True)
-            self.results_info.setText("IRC energy profile.")
-            self.chart_view.setChart(chart)
-            return
-
-        if scan_csv.exists():
-            with scan_csv.open("r", encoding="utf-8", errors="replace") as handle:
-                header = handle.readline().strip().split(",")
-                if len(header) < 3:
-                    self.results_info.setText("Scan result format not recognized.")
-                    self.chart_view.setChart(QChart())
-                    return
-                energy_index = header.index("energy") if "energy" in header else None
-                coord_index = None
-                for idx, name in enumerate(header):
-                    if name.startswith("bond_") or name.startswith("angle_") or name.startswith("dihedral_"):
-                        coord_index = idx
-                        break
-                if energy_index is None or coord_index is None:
-                    self.results_info.setText("Scan result format not recognized.")
-                    self.chart_view.setChart(QChart())
-                    return
-                line_series = QLineSeries()
-                for line in handle:
-                    parts = [item.strip() for item in line.split(",")]
-                    if len(parts) <= energy_index:
-                        continue
-                    try:
-                        coord = float(parts[coord_index])
-                        energy = float(parts[energy_index])
-                    except ValueError:
-                        continue
-                    line_series.append(coord, energy)
-            chart = QChart()
-            chart.addSeries(line_series)
-            axis_x = QValueAxis()
-            axis_x.setTitleText(header[coord_index])
-            axis_y = QValueAxis()
-            axis_y.setTitleText("Energy (Hartree)")
-            chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
-            chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
-            line_series.attachAxis(axis_x)
-            line_series.attachAxis(axis_y)
-            self.results_info.setText("Scan energy profile.")
-            self.chart_view.setChart(chart)
-            return
-
-        if freq_json.exists():
-            payload = _read_json(freq_json)
-            if not payload:
-                self.results_info.setText("Frequency result unavailable.")
+        try:
+            if not self.current_run:
+                self.results_info.setText("No run selected.")
                 self.chart_view.setChart(QChart())
                 return
-            frequencies = payload.get("results", {}).get("frequencies_wavenumber") or []
-            line_series = QLineSeries()
-            for idx, value in enumerate(frequencies, start=1):
-                try:
-                    line_series.append(idx, float(value))
-                except (TypeError, ValueError):
-                    continue
-            chart = QChart()
-            chart.addSeries(line_series)
-            axis_x = QValueAxis()
-            axis_x.setTitleText("Mode index")
-            axis_y = QValueAxis()
-            axis_y.setTitleText("Frequency (cm^-1)")
-            chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
-            chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
-            line_series.attachAxis(axis_x)
-            line_series.attachAxis(axis_y)
-            self.results_info.setText("Frequency spectrum.")
-            self.chart_view.setChart(chart)
-            return
+            run_dir = Path(self.current_run.run_dir)
+            irc_csv = run_dir / "irc_profile.csv"
+            scan_csv = run_dir / "scan_result.csv"
+            freq_json = run_dir / "frequency_result.json"
+            sp_json = run_dir / "qcschema_result.json"
 
-        self.results_info.setText("No results available.")
-        self.chart_view.setChart(QChart())
+            if irc_csv.exists():
+                series = {}
+                with irc_csv.open("r", encoding="utf-8", errors="replace") as handle:
+                    header = handle.readline().strip().split(",")
+                    try:
+                        direction_index = header.index("direction")
+                        step_index = header.index("step")
+                        energy_index = header.index("energy_ev")
+                    except ValueError:
+                        self.results_info.setText("IRC profile format not recognized.")
+                        self.chart_view.setChart(QChart())
+                        return
+                    for line in handle:
+                        parts = [item.strip() for item in line.split(",")]
+                        if len(parts) <= energy_index:
+                            continue
+                        direction = parts[direction_index]
+                        try:
+                            step = float(parts[step_index])
+                            energy = float(parts[energy_index])
+                        except ValueError:
+                            continue
+                        series.setdefault(direction, []).append((step, energy))
+                chart = QChart()
+                for direction, points in series.items():
+                    line_series = QLineSeries()
+                    line_series.setName(direction)
+                    for step, energy in points:
+                        line_series.append(step, energy)
+                    chart.addSeries(line_series)
+                axis_x = QValueAxis()
+                axis_x.setTitleText("Step")
+                axis_y = QValueAxis()
+                axis_y.setTitleText("Energy (eV)")
+                chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
+                chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
+                for s in chart.series():
+                    s.attachAxis(axis_x)
+                    s.attachAxis(axis_y)
+                chart.legend().setVisible(True)
+                self.results_info.setText("IRC energy profile.")
+                self.chart_view.setChart(chart)
+                return
+
+            if scan_csv.exists():
+                with scan_csv.open("r", encoding="utf-8", errors="replace") as handle:
+                    header = handle.readline().strip().split(",")
+                    if len(header) < 3:
+                        self.results_info.setText("Scan result format not recognized.")
+                        self.chart_view.setChart(QChart())
+                        return
+                    energy_index = header.index("energy") if "energy" in header else None
+                    coord_index = None
+                    for idx, name in enumerate(header):
+                        if name.startswith("bond_") or name.startswith("angle_") or name.startswith("dihedral_"):
+                            coord_index = idx
+                            break
+                    if energy_index is None or coord_index is None:
+                        self.results_info.setText("Scan result format not recognized.")
+                        self.chart_view.setChart(QChart())
+                        return
+                    line_series = QLineSeries()
+                    for line in handle:
+                        parts = [item.strip() for item in line.split(",")]
+                        if len(parts) <= energy_index:
+                            continue
+                        try:
+                            coord = float(parts[coord_index])
+                            energy = float(parts[energy_index])
+                        except ValueError:
+                            continue
+                        line_series.append(coord, energy)
+                chart = QChart()
+                chart.addSeries(line_series)
+                axis_x = QValueAxis()
+                axis_x.setTitleText(header[coord_index])
+                axis_y = QValueAxis()
+                axis_y.setTitleText("Energy (Hartree)")
+                chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
+                chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
+                line_series.attachAxis(axis_x)
+                line_series.attachAxis(axis_y)
+                self.results_info.setText("Scan energy profile.")
+                self.chart_view.setChart(chart)
+                return
+
+            if freq_json.exists():
+                payload = _read_json(freq_json)
+                if not payload:
+                    self.results_info.setText("Frequency result unavailable.")
+                    self.chart_view.setChart(QChart())
+                    return
+                frequencies = payload.get("results", {}).get("frequencies_wavenumber") or []
+                line_series = QLineSeries()
+                for idx, value in enumerate(frequencies, start=1):
+                    try:
+                        line_series.append(idx, float(value))
+                    except (TypeError, ValueError):
+                        continue
+                chart = QChart()
+                chart.addSeries(line_series)
+                axis_x = QValueAxis()
+                axis_x.setTitleText("Mode index")
+                axis_y = QValueAxis()
+                axis_y.setTitleText("Frequency (cm^-1)")
+                chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
+                chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
+                line_series.attachAxis(axis_x)
+                line_series.attachAxis(axis_y)
+                self.results_info.setText("Frequency spectrum.")
+                self.chart_view.setChart(chart)
+                return
+
+            if sp_json.exists():
+                payload = _read_json(sp_json)
+                energy = None
+                if payload:
+                    energy = payload.get("return_result")
+                    if energy is None:
+                        energy = payload.get("properties", {}).get("return_energy")
+                if energy is not None:
+                    self.results_info.setText(f"Single-point energy: {energy:.6f} Hartree")
+                else:
+                    self.results_info.setText("Single-point result available.")
+                self.chart_view.setChart(QChart())
+                return
+
+            self.results_info.setText("No results available.")
+            self.chart_view.setChart(QChart())
+        except Exception as exc:
+            self._log_gui_error("results_view", exc)
+            self.results_info.setText(
+                "Error loading results (see ~/DFTFlow/gui_errors.log)."
+            )
+            self.chart_view.setChart(QChart())
 
 
 def main():
