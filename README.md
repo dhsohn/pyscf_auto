@@ -1,5 +1,7 @@
 # DFTFlow
 
+**Status: Beta**
+
 DFTFlow is a lightweight workflow wrapper around PySCF (SCF/DFT/gradients/Hessians) and ASE (optimization driver). It runs geometry optimization (min/TS), single-point energy, frequency, IRC, and scans with consistent logging and reproducible metadata.
 
 - CLI entry point: `dftflow` (implementation in `run_opt.py`, core logic under `src/`)
