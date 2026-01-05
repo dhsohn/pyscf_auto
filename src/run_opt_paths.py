@@ -13,3 +13,7 @@ def get_app_base_dir() -> str:
 
 def get_runs_base_dir() -> str:
     return os.path.join(get_app_base_dir(), "runs")
+
+
+def get_smoke_runs_base_dir() -> str:
+    return os.path.join(get_runs_base_dir(), "smoke")

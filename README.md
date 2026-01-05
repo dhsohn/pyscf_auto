@@ -8,6 +8,12 @@ DFTFlow is a lightweight workflow wrapper around PySCF (SCF/DFT/gradients/Hessia
 - Default config template: `run_config.json`
 - Outputs are organized under `~/DFTFlow/runs/YYYY-MM-DD_HHMMSS/`
 
+## Scope
+
+DFTFlow is a PySCF/ASE-centered local workflow tool for workstation runs. It is
+not a general-purpose distributed workflow engine; background queueing is local
+to the machine where runs are submitted.
+
 ## Highlights
 
 - **Reproducible runs**: config, environment, and git metadata captured per run.
@@ -102,7 +108,11 @@ Install DFTFlow from the SMD-enabled conda channel:
 
 ```bash
 conda create -n dftflow -c daehyupsohn -c conda-forge dftflow
+conda activate dftflow
 ```
+
+Note: DFTFlow is distributed via conda only. `pip install dftflow` (or
+`pip install .`) is unsupported and will not provide the SMD-enabled PySCF build.
 
 This installation includes the SMD-enabled PySCF build required for solvent modeling.
 Keep `daehyupsohn` first so the SMD-enabled PySCF build is preferred.
@@ -151,6 +161,45 @@ dftflow queue retry <RUN_ID>
 dftflow queue requeue-failed
 dftflow queue prune --keep-days 30
 ```
+
+## Reproducibility and operations
+
+### Reproducibility checklist
+
+- Keep your `run_config.json` under version control; run `dftflow validate-config` before production runs.
+- Each run writes `config_used.json` and `metadata.json` in the run directory for exact inputs and run context.
+- Use `--run-dir` and `--run-id` to make runs traceable in notebooks, tickets, or LIMS.
+- Capture the conda environment (`conda list --explicit` or `conda env export --no-builds`) and store it alongside the run.
+- To reproduce results elsewhere, copy the full run directory (see Output layout above).
+
+### Operations and monitoring
+
+- Use `--background` to enqueue runs; the queue runner auto-starts on first use.
+- `dftflow queue status` shows queued and running jobs; `dftflow status --recent N` is a quick health check.
+- Use `--queue-max-runtime` to cap wall time and `dftflow queue retry` to re-run failed entries.
+- Prefer `--resume` for restarts so metadata and logs stay linked to the original run.
+- Primary logs: `run.log`, `log/run_events.jsonl`, and `metadata.json` inside each run directory.
+
+## Troubleshooting / FAQ
+
+### SMD missing or unavailable
+
+- Error: "SMD is unavailable in this PySCF build."
+- Fix: Install from the SMD-enabled conda channel and keep `daehyupsohn` first.
+- Check: `python -c "import pyscf; from pyscf.solvent import smd; print(smd.libsolvent is not None)"`
+
+### Queue stalls or jobs never start
+
+- Check the queue runner log: `~/DFTFlow/log/queue_runner.log` (or `$DFTFLOW_BASE_DIR/log/queue_runner.log`).
+- Use `dftflow queue status` and `dftflow status --recent 5` to see if runs are stuck.
+- Retry failed entries with `dftflow queue retry <RUN_ID>` or requeue with `dftflow queue requeue-failed`.
+- If a run is stuck in "running" with no log updates, check `run.log` and `log/run_events.jsonl`.
+
+### Resume errors
+
+- If the run is marked completed/failed/timeout/canceled, use `--force-resume`.
+- Ensure you pass the run directory (must include `checkpoint.json`; `config_used.json` is preferred).
+- If `--resume` fails to load config, check `config_used.json` for a valid JSON payload.
 
 ## Configuration notes
 

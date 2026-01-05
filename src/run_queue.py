@@ -29,6 +29,9 @@ QUEUE_PRUNE_STATUSES = (
     "timeout",
     "canceled",
 )
+QUEUE_MAX_ENTRIES = 30
+QUEUE_ACTIVE_STATUSES = ("queued", "running", "started")
+QUEUE_STALE_RUNNING_GRACE_MINUTES = 5
 
 
 def _queue_priority_value(entry):
@@ -112,6 +115,8 @@ def _load_queue(queue_path):
 
 
 def _write_queue(queue_path, queue_state):
+    if "entries" in queue_state and not queue_state.get("archived_at"):
+        _trim_queue_entries(queue_state, QUEUE_MAX_ENTRIES)
     queue_state["updated_at"] = datetime.now().isoformat()
     ensure_parent_dir(queue_path)
     queue_dir = os.path.dirname(queue_path) or "."
@@ -483,13 +488,14 @@ def _requeue_failed_entries(queue_path, lock_path):
     return len(requeued)
 
 
-def _format_queue_status(queue_state):
+def _format_queue_status(queue_state, print_output=True):
     entries = queue_state.get("entries") or []
     lines = []
     if not entries:
         lines.append("Queue is empty.")
-        for line in lines:
-            print(line)
+        if print_output:
+            for line in lines:
+                print(line)
         return lines
     lines.append("Queue status")
     queued_index = 0
@@ -528,8 +534,9 @@ def _format_queue_status(queue_state):
             lines.append(f"        run_dir={run_dir}")
         if max_runtime_seconds:
             lines.append(f"        max_runtime_seconds={max_runtime_seconds}")
-    for line in lines:
-        print(line)
+    if print_output:
+        for line in lines:
+            print(line)
     return lines
 
 
@@ -539,6 +546,46 @@ def _select_queue_entry_timestamp(entry):
         if timestamp:
             return timestamp
     return None
+
+
+def _trim_queue_entries(queue_state, max_entries):
+    if max_entries is None:
+        return 0
+    max_entries = int(max_entries)
+    if max_entries <= 0:
+        return 0
+    entries = queue_state.get("entries") or []
+    if len(entries) <= max_entries:
+        return 0
+    active_entries = []
+    active_indices = set()
+    historical_indices = []
+    historical_entries = []
+    for index, entry in enumerate(entries):
+        status = entry.get("status")
+        if status in QUEUE_ACTIVE_STATUSES:
+            active_entries.append(entry)
+            active_indices.add(index)
+        else:
+            historical_indices.append(index)
+            historical_entries.append(entry)
+    if len(active_entries) >= max_entries:
+        queue_state["entries"] = active_entries
+        return len(entries) - len(active_entries)
+    remaining_slots = max_entries - len(active_entries)
+    historical_with_sort = []
+    for index, entry in zip(historical_indices, historical_entries, strict=False):
+        timestamp = _select_queue_entry_timestamp(entry) or datetime.min
+        historical_with_sort.append((timestamp, index))
+    historical_with_sort.sort()
+    keep_indices = {index for _timestamp, index in historical_with_sort[-remaining_slots:]}
+    trimmed_entries = [
+        entry
+        for index, entry in enumerate(entries)
+        if index in active_indices or index in keep_indices
+    ]
+    queue_state["entries"] = trimmed_entries
+    return len(entries) - len(trimmed_entries)
 
 
 def _prune_queue_entries(queue_path, lock_path, keep_days, statuses):
@@ -570,6 +617,84 @@ def _prune_queue_entries(queue_path, lock_path, keep_days, statuses):
             _write_queue(queue_path, queue_state)
         remaining_count = len(remaining_entries) if removed_count else len(entries)
     return removed_count, remaining_count
+
+
+def _reconcile_stale_running_entries(queue_path, lock_path):
+    now = datetime.now()
+    reconciled = []
+    with _queue_lock(lock_path):
+        queue_state = _load_queue(queue_path)
+        entries = queue_state.get("entries") or []
+        for entry in entries:
+            status = entry.get("status")
+            if status not in ("running", "started"):
+                continue
+            metadata_path = entry.get("run_metadata_file")
+            metadata = None
+            if metadata_path and os.path.exists(metadata_path):
+                try:
+                    metadata = _load_run_metadata(metadata_path)
+                except (OSError, json.JSONDecodeError):
+                    metadata = None
+            pid = metadata.get("pid") if metadata else None
+            if pid and _is_pid_running(pid):
+                continue
+            reason = None
+            if metadata is None:
+                started_at = _parse_iso_timestamp(entry.get("started_at"))
+                if started_at:
+                    grace_end = started_at + timedelta(
+                        minutes=QUEUE_STALE_RUNNING_GRACE_MINUTES
+                    )
+                    if now < grace_end:
+                        continue
+                reason = "missing_metadata"
+            elif pid is None:
+                reason = "missing_pid"
+            else:
+                reason = "pid_not_running"
+            entry["status"] = "failed"
+            entry["ended_at"] = now.isoformat()
+            entry["exit_code"] = -1
+            entry["failure_reason"] = reason
+            reconciled.append((dict(entry), metadata, status, reason))
+        if reconciled:
+            queue_state["entries"] = entries
+            _write_queue(queue_path, queue_state)
+    for entry, metadata, previous_status, reason in reconciled:
+        metadata_path = entry.get("run_metadata_file")
+        if not metadata_path and entry.get("run_directory"):
+            metadata_path = os.path.join(
+                entry["run_directory"], DEFAULT_RUN_METADATA_PATH
+            )
+        if metadata_path:
+            updated = metadata or {}
+            updated.setdefault("run_directory", entry.get("run_directory"))
+            updated.setdefault("run_id", entry.get("run_id"))
+            updated.setdefault("log_file", entry.get("log_file"))
+            updated.setdefault("event_log_file", entry.get("event_log_file"))
+            updated.setdefault("config_file", entry.get("config_file"))
+            updated.setdefault("xyz_file", entry.get("xyz_file"))
+            started_at = entry.get("started_at") or entry.get("run_started_at")
+            if started_at:
+                updated.setdefault("run_started_at", started_at)
+            updated["status"] = "failed"
+            updated["run_ended_at"] = entry.get("ended_at")
+            updated["error"] = (
+                "Run marked failed by queue recovery ({reason}).".format(
+                    reason=reason
+                )
+            )
+            write_run_metadata(metadata_path, updated)
+        _record_status_event(
+            entry.get("event_log_file"),
+            entry.get("run_id"),
+            entry.get("run_directory"),
+            "failed",
+            previous_status=previous_status,
+            details={"reason": reason, "exit_code": -1},
+        )
+    return len(reconciled)
 
 
 def _archive_queue(queue_path, lock_path, archive_path=None):
@@ -619,6 +744,12 @@ def _run_queue_worker(script_path, queue_path, lock_path, runner_lock_path):
                 QUEUE_PRUNE_KEEP_DAYS,
                 remaining,
             )
+        reconciled = _reconcile_stale_running_entries(queue_path, lock_path)
+        if reconciled:
+            logging.warning(
+                "Recovered %s stale running queue entries marked as failed.",
+                reconciled,
+            )
         while True:
             entry = None
             entry_status_before = None
@@ -667,7 +798,6 @@ def _run_queue_worker(script_path, queue_path, lock_path, runner_lock_path):
                 "--run-id",
                 entry["run_id"],
                 "--no-background",
-                "--non-interactive",
             ]
             timeout_seconds = entry.get("max_runtime_seconds")
             try:
@@ -929,12 +1059,16 @@ def archive_queue(queue_path, lock_path, archive_path=None):
     return _archive_queue(queue_path, lock_path, archive_path=archive_path)
 
 
-def format_queue_status(queue_state):
-    return _format_queue_status(queue_state)
+def format_queue_status(queue_state, print_output=True):
+    return _format_queue_status(queue_state, print_output=print_output)
 
 
 def run_queue_worker(script_path, queue_path, lock_path, runner_lock_path):
     return _run_queue_worker(script_path, queue_path, lock_path, runner_lock_path)
+
+
+def reconcile_queue_entries(queue_path=DEFAULT_QUEUE_PATH, lock_path=DEFAULT_QUEUE_LOCK_PATH):
+    return _reconcile_stale_running_entries(queue_path, lock_path)
 
 
 def print_status(status_target, default_metadata_name=DEFAULT_RUN_METADATA_PATH):
@@ -982,6 +1116,7 @@ __all__ = [
     "print_status",
     "prune_queue_entries",
     "queue_lock",
+    "reconcile_queue_entries",
     "record_status_event",
     "register_foreground_run",
     "requeue_failed_entries",

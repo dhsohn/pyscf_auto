@@ -30,6 +30,22 @@ DEFAULT_QCSCHEMA_OUTPUT_PATH = "qcschema_result.json"
 DEFAULT_SCAN_RESULT_PATH = "scan_result.json"
 DEFAULT_SCAN_RESULT_CSV_PATH = "scan_result.csv"
 
+
+def _normalize_solvent_key(name):
+    return "".join(char for char in str(name).lower() if char.isalnum())
+
+
+SMD_UNSUPPORTED_SOLVENTS = (
+    "propylene carbonate",
+    "dimethyl carbonate",
+    "nmp",
+    "n-methyl-2-pyrrolidone",
+    "n-methyl-2-pyrrolidinone",
+)
+SMD_UNSUPPORTED_SOLVENT_KEYS = {
+    _normalize_solvent_key(name) for name in SMD_UNSUPPORTED_SOLVENTS
+}
+
 DEFAULT_APP_BASE_DIR = get_app_base_dir()
 DEFAULT_RUNS_BASE_DIR = get_runs_base_dir()
 DEFAULT_QUEUE_PATH = os.path.join(DEFAULT_RUNS_BASE_DIR, "queue.json")
@@ -1006,6 +1022,21 @@ def validate_run_config(config):
             return "scan"
         return None
 
+    def _validate_smd_solvent_support(solvent_model, solvent, field_label):
+        if not solvent_model:
+            return
+        if str(solvent_model).lower() != "smd":
+            return
+        if not solvent:
+            return
+        if _normalize_solvent_key(solvent) in SMD_UNSUPPORTED_SOLVENT_KEYS:
+            raise ValueError(
+                "Config '{field}' uses SMD solvent '{solvent}', which is not supported "
+                "by PySCF SMD. Use PCM or choose another solvent.".format(
+                    field=field_label, solvent=solvent
+                )
+            )
+
     def _validate_scan_dimension(dim, path, require_bounds=True):
         if not isinstance(dim, dict):
             raise ValueError(f"Config '{path}' must be an object.")
@@ -1162,6 +1193,7 @@ def validate_run_config(config):
                 "Config 'solvent' is required when 'solvent_model' is set. "
                 "Example: \"solvent\": \"water\"."
             )
+        _validate_smd_solvent_support(solvent_model, config.get("solvent"), "solvent")
     if "optimizer" in config and config["optimizer"] is not None:
         if not isinstance(config["optimizer"], dict):
             raise ValueError("Config 'optimizer' must be an object.")
@@ -1276,6 +1308,11 @@ def validate_run_config(config):
             "dispersion": (is_str, "Config '{name}' must be a string."),
         }
         _validate_fields(config["single_point"], single_point_rules, prefix="single_point.")
+        _validate_smd_solvent_support(
+            config["single_point"].get("solvent_model"),
+            config["single_point"].get("solvent"),
+            "single_point.solvent",
+        )
         if "scf" in config["single_point"] and config["single_point"]["scf"] is not None:
             if not isinstance(config["single_point"]["scf"], dict):
                 raise ValueError("Config 'single_point.scf' must be an object.")

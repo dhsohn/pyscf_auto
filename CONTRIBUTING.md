@@ -16,6 +16,11 @@ desktop GUI workflows, so please keep that context in mind when proposing change
 - Avoid adding pip-specific instructions or dependencies.
 - Add tests when behavior changes are not obvious.
 
+## CI and packaging
+
+- CI uses `pip install ".[dev]"` to install test/lint tooling only.
+- Do not imply pip installs are supported for end users; production installs are conda-only.
+
 ## Testing
 
 Run unit tests:

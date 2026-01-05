@@ -145,12 +145,6 @@ def build_parser():
         ),
     )
     run_parser.add_argument(
-        "--non-interactive",
-        "--advanced",
-        action="store_true",
-        help="Deprecated (interactive mode removed).",
-    )
-    run_parser.add_argument(
         "--background",
         action="store_true",
         help="Launch in the background queue (optional).",

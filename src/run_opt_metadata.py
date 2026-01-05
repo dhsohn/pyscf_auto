@@ -5,12 +5,109 @@ import os
 import re
 import subprocess
 import tempfile
+from datetime import datetime
+from pathlib import Path
 from importlib import metadata as importlib_metadata
 
+from run_opt_paths import get_runs_base_dir
 from run_opt_resources import ensure_parent_dir
 from run_opt_utils import extract_step_count
 
 RUN_METADATA_SCHEMA_VERSION = 1
+RUNS_INDEX_SCHEMA_VERSION = 1
+RUNS_INDEX_FILENAME = "index.json"
+
+
+def _index_entry_from_metadata(metadata_path, metadata):
+    run_dir = metadata.get("run_directory") or str(Path(metadata_path).parent)
+    return {
+        "run_dir": str(Path(run_dir).resolve()),
+        "metadata_path": str(Path(metadata_path).resolve()),
+        "status": metadata.get("status"),
+        "run_started_at": metadata.get("run_started_at"),
+        "run_ended_at": metadata.get("run_ended_at"),
+        "calculation_mode": metadata.get("calculation_mode"),
+        "basis": metadata.get("basis"),
+        "xc": metadata.get("xc"),
+        "solvent": metadata.get("solvent"),
+        "solvent_model": metadata.get("solvent_model"),
+        "dispersion": metadata.get("dispersion"),
+        "updated_at": datetime.now().isoformat(),
+    }
+
+
+def _load_runs_index(index_path):
+    if not os.path.exists(index_path):
+        return {"entries": [], "updated_at": None, "schema_version": RUNS_INDEX_SCHEMA_VERSION}
+    try:
+        with open(index_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {"entries": [], "updated_at": None, "schema_version": RUNS_INDEX_SCHEMA_VERSION}
+    if not isinstance(payload, dict):
+        return {"entries": [], "updated_at": None, "schema_version": RUNS_INDEX_SCHEMA_VERSION}
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        payload["entries"] = []
+    payload.setdefault("schema_version", RUNS_INDEX_SCHEMA_VERSION)
+    return payload
+
+
+def _write_runs_index(index_path, index_state):
+    ensure_parent_dir(index_path)
+    index_dir = os.path.dirname(index_path) or "."
+    temp_handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=index_dir,
+        prefix=".index.json.",
+        suffix=".tmp",
+        delete=False,
+    )
+    try:
+        with temp_handle as handle:
+            json.dump(index_state, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_handle.name, index_path)
+    finally:
+        if os.path.exists(temp_handle.name):
+            try:
+                os.remove(temp_handle.name)
+            except FileNotFoundError:
+                pass
+
+
+def _update_runs_index(metadata_path, metadata):
+    try:
+        if not metadata_path or metadata is None:
+            return
+        runs_base = Path(get_runs_base_dir()).resolve()
+        run_dir = metadata.get("run_directory") or str(Path(metadata_path).parent)
+        run_dir_path = Path(run_dir).expanduser().resolve()
+        if run_dir_path.parent != runs_base:
+            return
+        index_path = runs_base / RUNS_INDEX_FILENAME
+        index_state = _load_runs_index(str(index_path))
+        entries = index_state.get("entries") or []
+        entry = _index_entry_from_metadata(metadata_path, metadata)
+        updated = False
+        for idx, existing in enumerate(entries):
+            if existing.get("run_dir") == entry["run_dir"]:
+                keys = entry.keys()
+                if all(existing.get(key) == entry.get(key) for key in keys):
+                    return
+                entries[idx] = {**existing, **entry}
+                updated = True
+                break
+        if not updated:
+            entries.append(entry)
+        index_state["entries"] = entries
+        index_state["updated_at"] = datetime.now().isoformat()
+        index_state.setdefault("schema_version", RUNS_INDEX_SCHEMA_VERSION)
+        _write_runs_index(str(index_path), index_state)
+    except Exception as exc:
+        logging.getLogger().warning("Failed to update runs index: %s", exc)
 
 
 def _extract_energy(*candidates):
@@ -221,6 +318,7 @@ def write_run_metadata(metadata_path, metadata):
                     os.remove(temp_handle.name)
                 except FileNotFoundError:
                     pass
+        _update_runs_index(metadata_path, metadata)
     except Exception as exc:
         logging.getLogger().error(
             "Failed to write run metadata to %s: %s",

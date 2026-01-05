@@ -2,7 +2,12 @@ import logging
 import os
 import re
 
-from run_opt_config import DEFAULT_CHARGE, DEFAULT_MULTIPLICITY, DEFAULT_SPIN
+from run_opt_config import (
+    DEFAULT_CHARGE,
+    DEFAULT_MULTIPLICITY,
+    DEFAULT_SPIN,
+    SMD_UNSUPPORTED_SOLVENT_KEYS,
+)
 from run_opt_dispersion import load_d3_calculator, parse_dispersion_settings
 from run_opt_resources import ensure_parent_dir, resolve_run_path
 from run_opt_utils import extract_step_count
@@ -390,22 +395,29 @@ def apply_solvent_model(
                 "Install the SMD-enabled PySCF package from the DFTFlow conda channel."
             )
         supported = _supported_smd_solvents()
+        supported_map = _build_smd_supported_map(supported)
         normalized = _normalize_solvent_key(solvent_name)
-        supported_map = {}
-        for name in supported:
-            key = _normalize_solvent_key(name)
-            if key and key not in supported_map:
-                supported_map[key] = name
-        if normalized not in supported_map:
+        if normalized in SMD_UNSUPPORTED_SOLVENT_KEYS:
+            raise ValueError(
+                "SMD solvent '{name}' is not supported by PySCF SMD. "
+                "Use PCM or choose another solvent.".format(name=solvent_name)
+            )
+        resolved = supported_map.get(normalized)
+        if resolved is None:
             preview = ", ".join(sorted(supported)[:10])
+            suggestion = _SMD_SOLVENT_ALIASES.get(normalized)
+            hint = f" Try '{suggestion}'." if suggestion else ""
             raise ValueError(
                 "SMD solvent '{name}' not found in supported list (showing first 10 "
-                "of {count}: {preview}).".format(
-                    name=solvent_name, count=len(supported), preview=preview
+                "of {count}: {preview}).{hint}".format(
+                    name=solvent_name,
+                    count=len(supported),
+                    preview=preview,
+                    hint=hint,
                 )
             )
         mf = mf.SMD()
-        mf.with_solvent.solvent = supported_map[normalized]
+        mf.with_solvent.solvent = resolved
     else:
         raise ValueError(f"Unsupported solvent model '{solvent_model}'.")
     return mf
@@ -413,6 +425,34 @@ def apply_solvent_model(
 
 def _normalize_solvent_key(name):
     return "".join(char for char in name.lower() if char.isalnum())
+
+
+_SMD_SOLVENT_ALIASES = {
+    _normalize_solvent_key("diethyl ether"): "diethylether",
+    _normalize_solvent_key("isopropanol"): "2-propanol",
+    _normalize_solvent_key("dmso"): "dimethylsulfoxide",
+    _normalize_solvent_key("ethylene glycol"): "1,2-ethanediol",
+    _normalize_solvent_key("ethyl acetate"): "ethylethanoate",
+    _normalize_solvent_key("hexane"): "n-hexane",
+    _normalize_solvent_key("dmf"): "N,N-dimethylformamide",
+    _normalize_solvent_key("heptane"): "n-heptane",
+}
+
+
+def _build_smd_supported_map(supported=None):
+    if supported is None:
+        supported = _supported_smd_solvents()
+    supported_map = {}
+    for name in supported:
+        key = _normalize_solvent_key(name)
+        if key and key not in supported_map:
+            supported_map[key] = name
+    for alias_key, canonical in _SMD_SOLVENT_ALIASES.items():
+        canonical_key = _normalize_solvent_key(canonical)
+        canonical_name = supported_map.get(canonical_key)
+        if canonical_name and alias_key not in supported_map:
+            supported_map[alias_key] = canonical_name
+    return supported_map
 
 
 def _supported_smd_solvents():

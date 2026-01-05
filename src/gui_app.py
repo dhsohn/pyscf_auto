@@ -1,24 +1,35 @@
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
+import threading
 import traceback
-from datetime import datetime
 from collections import deque
+from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QScatterSeries, QValueAxis
 
-from run_opt_config import validate_run_config
+from run_opt_config import SMD_UNSUPPORTED_SOLVENT_KEYS, validate_run_config
 from run_queue import format_queue_status, load_queue
 from run_opt_paths import get_app_base_dir, get_runs_base_dir
 
 
 REFRESH_INTERVAL_MS = 2000
+DISK_USAGE_INTERVAL_MS = 60000
 LOG_TAIL_LINES = 2000
+RUN_LIST_LIMIT = 20
+RUNS_INDEX_SCHEMA_VERSION = 1
+RUNS_INDEX_FILENAME = "index.json"
+
+
+def _normalize_solvent_key(name):
+    return "".join(char for char in str(name).lower() if char.isalnum())
 
 
 @dataclass
@@ -44,6 +55,75 @@ def _read_json(path: Path) -> dict | None:
             return json.load(handle)
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def _format_bytes(size_bytes: int | None) -> str:
+    if size_bytes is None:
+        return "n/a"
+    value = float(size_bytes)
+    units = ("B", "KB", "MB", "GB", "TB", "PB")
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(value)} {unit}"
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} PB"
+
+
+def _walk_directory_size(path: Path) -> int:
+    total = 0
+    if not path.exists():
+        return total
+    for root, _dirs, files in os.walk(path, followlinks=False):
+        for filename in files:
+            file_path = os.path.join(root, filename)
+            try:
+                total += os.path.getsize(file_path)
+            except OSError:
+                continue
+    return total
+
+
+def _directory_size_bytes(path: Path) -> int:
+    if not path.exists():
+        return 0
+    du_path = shutil.which("du")
+    if du_path:
+        try:
+            completed = subprocess.run(
+                [du_path, "-sk", str(path)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if completed.returncode == 0:
+                value = completed.stdout.strip().split()[0]
+                return int(value) * 1024
+        except (OSError, ValueError, IndexError):
+            pass
+    return _walk_directory_size(path)
+
+
+def _calculate_disk_usage(path: Path) -> dict:
+    result: dict[str, int | str | None] = {
+        "runs_bytes": None,
+        "free_bytes": None,
+        "total_bytes": None,
+        "error": None,
+    }
+    try:
+        usage = shutil.disk_usage(path)
+        result["free_bytes"] = usage.free
+        result["total_bytes"] = usage.total
+    except OSError as exc:
+        result["error"] = str(exc)
+    try:
+        result["runs_bytes"] = _directory_size_bytes(path)
+    except OSError as exc:
+        if not result.get("error"):
+            result["error"] = str(exc)
+    return result
 
 
 def _tail_lines(path: Path, max_lines: int) -> list[str]:
@@ -75,41 +155,142 @@ def _safe_results(payload: dict | None) -> dict:
     return {}
 
 
-def _iter_metadata_files(base_dir: Path, max_depth: int = 2):
-    base_depth = len(base_dir.parts)
-    for root, dirs, files in os.walk(base_dir):
-        depth = len(Path(root).parts) - base_depth
-        if depth > max_depth:
-            dirs[:] = []
+def _iter_metadata_files(base_dir: Path):
+    if not base_dir.exists():
+        return
+    for entry in base_dir.iterdir():
+        if not entry.is_dir():
             continue
-        if "metadata.json" in files:
-            yield Path(root) / "metadata.json"
+        metadata_path = entry / "metadata.json"
+        if metadata_path.exists():
+            yield metadata_path
 
 
-def _load_run_entries(base_dir: Path) -> list[RunEntry]:
-    entries: list[RunEntry] = []
+def _index_entry_from_metadata(metadata_path: Path, metadata: dict) -> dict:
+    run_dir = metadata.get("run_directory") or str(metadata_path.parent)
+    return {
+        "run_dir": str(Path(run_dir).resolve()),
+        "metadata_path": str(metadata_path.resolve()),
+        "status": metadata.get("status"),
+        "run_started_at": metadata.get("run_started_at"),
+        "run_ended_at": metadata.get("run_ended_at"),
+        "calculation_mode": metadata.get("calculation_mode"),
+        "basis": metadata.get("basis"),
+        "xc": metadata.get("xc"),
+        "solvent": metadata.get("solvent"),
+        "solvent_model": metadata.get("solvent_model"),
+        "dispersion": metadata.get("dispersion"),
+        "updated_at": datetime.now().isoformat(),
+    }
+
+
+def _load_runs_index(base_dir: Path) -> dict | None:
+    index_path = base_dir / RUNS_INDEX_FILENAME
+    payload = _read_json(index_path)
+    if not payload or not isinstance(payload, dict):
+        return None
+    if not isinstance(payload.get("entries"), list):
+        return None
+    return payload
+
+
+def _write_runs_index(base_dir: Path, entries: list[dict]):
+    index_path = base_dir / RUNS_INDEX_FILENAME
+    base_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": RUNS_INDEX_SCHEMA_VERSION,
+        "updated_at": datetime.now().isoformat(),
+        "entries": entries,
+    }
+    temp_handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=str(base_dir),
+        prefix=".index.json.",
+        suffix=".tmp",
+        delete=False,
+    )
+    try:
+        with temp_handle as handle:
+            json.dump(payload, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_handle.name, index_path)
+    finally:
+        if os.path.exists(temp_handle.name):
+            try:
+                os.remove(temp_handle.name)
+            except FileNotFoundError:
+                pass
+
+
+def _build_runs_index(base_dir: Path) -> dict:
+    entries: list[dict] = []
     for metadata_path in _iter_metadata_files(base_dir):
         metadata = _read_json(metadata_path)
         if not metadata:
             continue
-        run_dir = metadata.get("run_directory") or str(metadata_path.parent)
-        entries.append(
-            RunEntry(
-                run_dir=run_dir,
-                metadata_path=str(metadata_path),
-                status=metadata.get("status", "unknown"),
-                started_at=metadata.get("run_started_at"),
-                calculation_mode=metadata.get("calculation_mode"),
-                basis=metadata.get("basis"),
-                xc=metadata.get("xc"),
-            )
-        )
+        entries.append(_index_entry_from_metadata(metadata_path, metadata))
+    _write_runs_index(base_dir, entries)
+    return {"entries": entries}
+
+
+def _run_entry_from_index(item: dict, base_dir: Path) -> RunEntry | None:
+    run_dir = item.get("run_dir") or item.get("run_directory")
+    metadata_path = item.get("metadata_path")
+    if not run_dir:
+        return None
+    run_dir_path = Path(run_dir)
+    if not run_dir_path.is_absolute():
+        run_dir_path = (base_dir / run_dir_path).resolve()
+    if run_dir_path.parent != base_dir.resolve():
+        return None
+    if not metadata_path:
+        metadata_path = str(run_dir_path / "metadata.json")
+    metadata_path = str(Path(metadata_path).resolve())
+    return RunEntry(
+        run_dir=str(run_dir_path),
+        metadata_path=metadata_path,
+        status=item.get("status", "unknown"),
+        started_at=item.get("run_started_at"),
+        calculation_mode=item.get("calculation_mode"),
+        basis=item.get("basis"),
+        xc=item.get("xc"),
+    )
+
+
+def _run_entry_from_metadata(metadata_path: Path, metadata: dict) -> RunEntry:
+    run_dir = metadata.get("run_directory") or str(metadata_path.parent)
+    return RunEntry(
+        run_dir=str(Path(run_dir).resolve()),
+        metadata_path=str(metadata_path.resolve()),
+        status=metadata.get("status", "unknown"),
+        started_at=metadata.get("run_started_at"),
+        calculation_mode=metadata.get("calculation_mode"),
+        basis=metadata.get("basis"),
+        xc=metadata.get("xc"),
+    )
+
+
+def _load_run_entries(base_dir: Path, limit: int | None = None) -> list[RunEntry]:
+    entries: list[RunEntry] = []
+    index_state = _load_runs_index(base_dir)
+    if index_state is None:
+        index_state = _build_runs_index(base_dir)
+    for item in index_state.get("entries") or []:
+        if not isinstance(item, dict):
+            continue
+        entry = _run_entry_from_index(item, base_dir)
+        if entry:
+            entries.append(entry)
     entries.sort(
         key=lambda item: os.path.getmtime(item.metadata_path)
         if os.path.exists(item.metadata_path)
         else 0,
         reverse=True,
     )
+    if limit:
+        entries = entries[:limit]
     return entries
 
 
@@ -601,6 +782,15 @@ class RunSubmitWidget(QtWidgets.QWidget):
         solvent_model = self.solvent_model_box.currentText()
         if solvent_model == "none":
             solvent_model = None
+        if solvent_model and solvent_model.lower() == "smd":
+            if _normalize_solvent_key(solvent) in SMD_UNSUPPORTED_SOLVENT_KEYS:
+                return {
+                    "xyz": None,
+                    "error": (
+                        f"SMD solvent '{solvent}' is not supported by PySCF SMD. "
+                        "Use PCM or choose another solvent."
+                    ),
+                }
         dispersion = self.dispersion_box.currentText()
         if dispersion == "none":
             dispersion = None
@@ -762,8 +952,10 @@ class QueueDialog(QtWidgets.QDialog):
 
     def _refresh_queue(self):
         try:
+            from run_queue import reconcile_queue_entries
+            reconcile_queue_entries()
             queue_state = load_queue()
-            formatted = format_queue_status(queue_state)
+            formatted = format_queue_status(queue_state, print_output=False)
             if isinstance(formatted, str):
                 text = formatted
             else:
@@ -778,6 +970,8 @@ class QueueDialog(QtWidgets.QDialog):
 
 
 class DFTFlowWindow(QtWidgets.QMainWindow):
+    disk_usage_ready = QtCore.Signal(object)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DFTFlow")
@@ -785,8 +979,11 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
 
         self.runs_dir = _ensure_runs_dir()
         self.current_run: RunEntry | None = None
+        self.manual_runs: dict[str, RunEntry] = {}
         self.current_log_lines: list[str] = []
         self.current_query = ""
+        self._disk_usage_inflight = False
+        self.disk_usage_ready.connect(self._apply_disk_usage)
 
         self._build_ui()
         self._refresh_runs()
@@ -794,6 +991,11 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
         self.refresh_timer = QtCore.QTimer(self)
         self.refresh_timer.timeout.connect(self._refresh_runs)
         self.refresh_timer.start(REFRESH_INTERVAL_MS)
+
+        self.disk_usage_timer = QtCore.QTimer(self)
+        self.disk_usage_timer.timeout.connect(self._refresh_disk_usage)
+        self.disk_usage_timer.start(DISK_USAGE_INTERVAL_MS)
+        self._refresh_disk_usage()
 
     def _log_gui_error(self, label, exc):
         error_path = Path(get_app_base_dir()) / "gui_errors.log"
@@ -819,6 +1021,10 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
         open_runs_action.triggered.connect(self._open_runs_folder)
         toolbar.addAction(open_runs_action)
 
+        open_run_action = QtGui.QAction("Open Run...", self)
+        open_run_action.triggered.connect(self._open_run_dialog)
+        toolbar.addAction(open_run_action)
+
         splitter = QtWidgets.QSplitter()
 
         left_panel = QtWidgets.QWidget()
@@ -826,7 +1032,10 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
         left_layout.setContentsMargins(8, 8, 8, 8)
         self.run_list = QtWidgets.QListWidget()
         self.run_list.itemSelectionChanged.connect(self._select_run)
-        left_layout.addWidget(self.run_list)
+        left_layout.addWidget(self.run_list, 1)
+        self.disk_usage_label = QtWidgets.QLabel("Disk: calculating...")
+        self.disk_usage_label.setWordWrap(True)
+        left_layout.addWidget(self.disk_usage_label)
         left_panel.setLayout(left_layout)
 
         self.tabs = QtWidgets.QTabWidget()
@@ -947,6 +1156,35 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
         url = QtCore.QUrl.fromLocalFile(str(self.runs_dir))
         QtGui.QDesktopServices.openUrl(url)
 
+    def _open_run_dialog(self):
+        selected_dir = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Open Run Directory", str(self.runs_dir)
+        )
+        if not selected_dir:
+            return
+        run_dir = Path(selected_dir)
+        metadata_path = run_dir / "metadata.json"
+        if not metadata_path.exists():
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Open Run",
+                f"No metadata.json found in {run_dir}",
+            )
+            return
+        metadata = _read_json(metadata_path)
+        if not metadata:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Open Run",
+                f"Unable to read metadata.json in {run_dir}",
+            )
+            return
+        entry = _run_entry_from_metadata(metadata_path, metadata)
+        self.manual_runs[entry.run_dir] = entry
+        self.current_run = entry
+        self._refresh_runs()
+        self._select_run_by_dir(entry.run_dir)
+
     def _stop_run(self):
         if not self.current_run:
             return
@@ -966,9 +1204,24 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
                 self, "Stop Run", f"Unable to stop process {pid}: {exc}"
             )
 
+    def _select_run_by_dir(self, run_dir):
+        for index in range(self.run_list.count()):
+            item = self.run_list.item(index)
+            entry = item.data(QtCore.Qt.UserRole)
+            if entry and entry.run_dir == run_dir:
+                item.setSelected(True)
+                self.run_list.scrollToItem(item)
+                return
+
     def _refresh_runs(self):
         selected = self.current_run.run_dir if self.current_run else None
-        entries = _load_run_entries(self.runs_dir)
+        entries = _load_run_entries(self.runs_dir, limit=RUN_LIST_LIMIT)
+        if self.manual_runs:
+            known = {entry.run_dir for entry in entries}
+            for run_dir, entry in self.manual_runs.items():
+                if run_dir not in known:
+                    entries.insert(0, entry)
+                    known.add(run_dir)
         self.run_list.blockSignals(True)
         self.run_list.clear()
         for entry in entries:
@@ -987,6 +1240,35 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
         self.run_list.blockSignals(False)
         if selected:
             self._select_run()
+
+    def _refresh_disk_usage(self):
+        if self._disk_usage_inflight:
+            return
+        self._disk_usage_inflight = True
+        runs_dir = Path(self.runs_dir)
+
+        def worker():
+            usage = _calculate_disk_usage(runs_dir)
+            self.disk_usage_ready.emit(usage)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_disk_usage(self, usage):
+        self._disk_usage_inflight = False
+        if not hasattr(self, "disk_usage_label"):
+            return
+        if not isinstance(usage, dict):
+            self.disk_usage_label.setText("Disk: unavailable")
+            self.disk_usage_label.setToolTip("")
+            return
+        runs_text = _format_bytes(usage.get("runs_bytes"))
+        free_text = _format_bytes(usage.get("free_bytes"))
+        total_text = _format_bytes(usage.get("total_bytes"))
+        label = f"Runs: {runs_text} | Free: {free_text}"
+        if usage.get("total_bytes") is not None:
+            label += f" / {total_text}"
+        self.disk_usage_label.setText(label)
+        self.disk_usage_label.setToolTip(usage.get("error") or "")
 
     def _select_run(self):
         selected_items = self.run_list.selectedItems()

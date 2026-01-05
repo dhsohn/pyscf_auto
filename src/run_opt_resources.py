@@ -4,9 +4,14 @@ import importlib.util
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
-from datetime import datetime
+import tarfile
+import tempfile
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
 
 from run_opt_paths import get_runs_base_dir
 THREAD_ENV_VARS = (
@@ -17,6 +22,24 @@ THREAD_ENV_VARS = (
     "VECLIB_MAXIMUM_THREADS",
     "BLIS_NUM_THREADS",
 )
+
+RUN_ARCHIVE_AFTER_DAYS = int(os.environ.get("DFTFLOW_RUN_ARCHIVE_AFTER_DAYS", "7"))
+RUN_ARCHIVE_INTERVAL_HOURS = int(
+    os.environ.get("DFTFLOW_RUN_ARCHIVE_INTERVAL_HOURS", "6")
+)
+RUN_ARCHIVE_MAX_PER_PASS = int(
+    os.environ.get("DFTFLOW_RUN_ARCHIVE_MAX_PER_PASS", "5")
+)
+RUN_ARCHIVE_DIRNAME = "archive"
+RUN_ARCHIVE_STATE_FILENAME = ".archive_state.json"
+RUN_ARCHIVE_LOCK_FILENAME = ".archive.lock"
+RUN_ARCHIVE_STATUSES = ("completed", "failed", "timeout", "canceled", "skipped")
+RUN_ARCHIVE_SKIP_DIRS = {
+    RUN_ARCHIVE_DIRNAME,
+    "configs",
+    "inputs",
+    "smoke",
+}
 
 
 def _evaluate_openmp_availability(requested_threads, effective_threads):
@@ -252,3 +275,240 @@ def collect_environment_snapshot(thread_count):
         "threading": threading_snapshot,
         "conda": conda_snapshot,
     }
+
+
+def _parse_iso_timestamp(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _load_archive_state(base_dir: Path) -> dict:
+    state_path = base_dir / RUN_ARCHIVE_STATE_FILENAME
+    if not state_path.exists():
+        return {}
+    try:
+        with state_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return payload
+
+
+def _write_archive_state(base_dir: Path, state: dict) -> None:
+    state_path = base_dir / RUN_ARCHIVE_STATE_FILENAME
+    ensure_parent_dir(str(state_path))
+    temp_handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=str(base_dir),
+        prefix=".archive_state.",
+        suffix=".tmp",
+        delete=False,
+    )
+    try:
+        with temp_handle as handle:
+            json.dump(state, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_handle.name, state_path)
+    finally:
+        if os.path.exists(temp_handle.name):
+            try:
+                os.remove(temp_handle.name)
+            except FileNotFoundError:
+                pass
+
+
+def _try_acquire_archive_lock(lock_path: Path, stale_seconds: int = 3600) -> bool:
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            mtime = os.path.getmtime(lock_path)
+        except OSError:
+            return False
+        if time.time() - mtime < stale_seconds:
+            return False
+        try:
+            os.remove(lock_path)
+        except FileNotFoundError:
+            return False
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            return False
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(f"{os.getpid()} {datetime.now().isoformat()}")
+    return True
+
+
+def _release_archive_lock(lock_path: Path) -> None:
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _load_runs_index(base_dir: Path) -> dict | None:
+    index_path = base_dir / "index.json"
+    if not index_path.exists():
+        return None
+    try:
+        with index_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("entries"), list):
+        return None
+    return payload
+
+
+def _write_runs_index(base_dir: Path, payload: dict) -> None:
+    index_path = base_dir / "index.json"
+    ensure_parent_dir(str(index_path))
+    temp_handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=str(base_dir),
+        prefix=".index.json.",
+        suffix=".tmp",
+        delete=False,
+    )
+    try:
+        with temp_handle as handle:
+            json.dump(payload, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_handle.name, index_path)
+    finally:
+        if os.path.exists(temp_handle.name):
+            try:
+                os.remove(temp_handle.name)
+            except FileNotFoundError:
+                pass
+
+
+def _remove_runs_index_entries(base_dir: Path, run_dirs: set[str]) -> None:
+    payload = _load_runs_index(base_dir)
+    if not payload:
+        return
+    entries = payload.get("entries") or []
+    if not entries:
+        return
+    normalized = {str(Path(path).resolve()) for path in run_dirs}
+    filtered = [
+        entry
+        for entry in entries
+        if str(Path(entry.get("run_dir", "")).resolve()) not in normalized
+    ]
+    if len(filtered) == len(entries):
+        return
+    payload["entries"] = filtered
+    payload["updated_at"] = datetime.now().isoformat()
+    _write_runs_index(base_dir, payload)
+
+
+def _archive_run_dir(run_dir: Path, archive_dir: Path) -> Path | None:
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_name = f"{run_dir.name}.tar.gz"
+    archive_path = archive_dir / archive_name
+    if archive_path.exists():
+        stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        archive_path = archive_dir / f"{run_dir.name}.{stamp}.tar.gz"
+    try:
+        with tarfile.open(archive_path, "w:gz") as tar:
+            tar.add(run_dir, arcname=run_dir.name)
+    except (OSError, tarfile.TarError):
+        return None
+    try:
+        shutil.rmtree(run_dir)
+    except OSError:
+        return None
+    return archive_path
+
+
+def _collect_archive_candidates(base_dir: Path, cutoff: datetime) -> list[Path]:
+    candidates: list[Path] = []
+    for entry in base_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        if entry.name.startswith(".") or entry.name in RUN_ARCHIVE_SKIP_DIRS:
+            continue
+        metadata_path = entry / "metadata.json"
+        if not metadata_path.exists():
+            continue
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        status = metadata.get("status")
+        if status not in RUN_ARCHIVE_STATUSES:
+            continue
+        ended_at = _parse_iso_timestamp(
+            metadata.get("run_ended_at") or metadata.get("run_updated_at")
+        )
+        if ended_at is None:
+            try:
+                ended_at = datetime.fromtimestamp(metadata_path.stat().st_mtime)
+            except OSError:
+                continue
+        if ended_at < cutoff:
+            candidates.append(entry)
+    candidates.sort(key=lambda path: path.name)
+    return candidates
+
+
+def auto_archive_runs(base_dir: str | None = None) -> int:
+    if RUN_ARCHIVE_AFTER_DAYS <= 0:
+        return 0
+    base_path = Path(base_dir) if base_dir else Path(get_runs_base_dir())
+    if not base_path.exists():
+        return 0
+    cutoff = datetime.now() - timedelta(days=RUN_ARCHIVE_AFTER_DAYS)
+    candidates = _collect_archive_candidates(base_path, cutoff)
+    if not candidates:
+        return 0
+    archive_dir = base_path / RUN_ARCHIVE_DIRNAME
+    archived = []
+    for run_dir in candidates[:RUN_ARCHIVE_MAX_PER_PASS]:
+        archive_path = _archive_run_dir(run_dir, archive_dir)
+        if archive_path is None:
+            continue
+        archived.append(str(run_dir.resolve()))
+    if archived:
+        _remove_runs_index_entries(base_path, set(archived))
+    return len(archived)
+
+
+def maybe_auto_archive_runs(base_dir: str | None = None) -> int:
+    if RUN_ARCHIVE_AFTER_DAYS <= 0:
+        return 0
+    base_path = Path(base_dir) if base_dir else Path(get_runs_base_dir())
+    if not base_path.exists():
+        return 0
+    state = _load_archive_state(base_path)
+    last_run = _parse_iso_timestamp(state.get("last_run_at"))
+    if last_run:
+        delta = datetime.now() - last_run
+        if delta < timedelta(hours=RUN_ARCHIVE_INTERVAL_HOURS):
+            return 0
+    lock_path = base_path / RUN_ARCHIVE_LOCK_FILENAME
+    if not _try_acquire_archive_lock(lock_path):
+        return 0
+    archived = 0
+    try:
+        archived = auto_archive_runs(str(base_path))
+        state = {
+            "last_run_at": datetime.now().isoformat(),
+            "last_archived": archived,
+        }
+        _write_archive_state(base_path, state)
+    finally:
+        _release_archive_lock(lock_path)
+    return archived

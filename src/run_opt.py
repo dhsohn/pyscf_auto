@@ -25,11 +25,13 @@ from run_opt_config import (
     DEFAULT_QUEUE_RUNNER_LOCK_PATH,
     DEFAULT_RUN_METADATA_PATH,
     DEFAULT_SOLVENT_MAP_PATH,
+    SMD_UNSUPPORTED_SOLVENT_KEYS,
     build_run_config,
     load_run_config,
     load_solvent_map,
 )
-from run_opt_resources import create_run_directory
+from run_opt_paths import get_smoke_runs_base_dir
+from run_opt_resources import create_run_directory, maybe_auto_archive_runs
 from run_opt_metadata import write_run_metadata
 
 TERMINAL_RESUME_STATUSES = {"completed", "failed", "timeout", "canceled"}
@@ -350,7 +352,7 @@ def _prepare_smoke_test_suite(args):
     if "smd" in solvent_model_options:
         try:
             from pyscf.solvent import smd as pyscf_smd
-            from run_opt_engine import _supported_smd_solvents
+            from run_opt_engine import _build_smd_supported_map
 
             if getattr(pyscf_smd, "libsolvent", None) is None:
                 logging.warning(
@@ -358,10 +360,7 @@ def _prepare_smoke_test_suite(args):
                 )
                 smd_supported_keys = set()
             else:
-                smd_supported_keys = {
-                    _normalize_solvent_key(name)
-                    for name in _supported_smd_solvents()
-                }
+                smd_supported_keys = set(_build_smd_supported_map().keys())
         except Exception as exc:
             logging.warning(
                 "Unable to load SMD solvent list; skipping SMD smoke tests (%s).", exc
@@ -382,9 +381,13 @@ def _prepare_smoke_test_suite(args):
             )
         if solvent_model:
             for solvent in solvent_options:
-                if solvent_model == "smd" and smd_supported_keys is not None:
-                    if _normalize_solvent_key(solvent) not in smd_supported_keys:
+                if solvent_model == "smd":
+                    normalized_solvent = _normalize_solvent_key(solvent)
+                    if normalized_solvent in SMD_UNSUPPORTED_SOLVENT_KEYS:
                         continue
+                    if smd_supported_keys is not None:
+                        if normalized_solvent not in smd_supported_keys:
+                            continue
                 cases.append(
                     {
                         "basis": basis,
@@ -535,8 +538,6 @@ def _run_smoke_test_case(
         xyz_file=str(xyz_path),
         solvent_map=solvent_map_path,
         config=str(smoke_config_path),
-        interactive=False,
-        non_interactive=True,
         background=False,
         no_background=True,
         run_dir=str(run_dir),
@@ -595,7 +596,6 @@ def _run_smoke_test_case(
         "-m",
         "run_opt",
         "run",
-        "--non-interactive",
         str(xyz_path),
         "--config",
         str(smoke_config_path),
@@ -898,6 +898,12 @@ def main():
     parser = cli.build_parser()
     args = parser.parse_args(cli._normalize_cli_args(sys.argv[1:]))
 
+    if args.command in ("run", "smoke-test"):
+        try:
+            maybe_auto_archive_runs()
+        except Exception as exc:
+            logging.warning("Auto-archive check failed: %s", exc)
+
     try:
         if args.command == "doctor":
             workflow.run_doctor()
@@ -906,6 +912,9 @@ def main():
         if args.command == "queue":
             if args.queue_command == "status":
                 run_queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                run_queue.reconcile_queue_entries(
+                    DEFAULT_QUEUE_PATH, DEFAULT_QUEUE_LOCK_PATH
+                )
                 with run_queue.queue_lock(DEFAULT_QUEUE_LOCK_PATH):
                     queue_state = run_queue.load_queue(DEFAULT_QUEUE_PATH)
                 run_queue.format_queue_status(queue_state)
@@ -996,7 +1005,9 @@ def main():
             solvent_map_path = base_config.get("solvent_map") or DEFAULT_SOLVENT_MAP_PATH
             if args.resume and not args.run_dir:
                 raise ValueError("--resume requires --run-dir for smoke-test.")
-            base_run_dir = args.run_dir or create_run_directory()
+            base_run_dir = args.run_dir or create_run_directory(
+                get_smoke_runs_base_dir()
+            )
             base_run_dir = str(Path(base_run_dir).expanduser().resolve())
             os.makedirs(base_run_dir, exist_ok=True)
             xyz_path = Path(base_run_dir) / "smoke_test_water.xyz"
@@ -1145,8 +1156,6 @@ def main():
             raise ValueError("--scan-mode cannot be used with --resume.")
         if args.resume and args.xyz_file:
             raise ValueError("xyz_file cannot be provided when using --resume.")
-        if args.resume:
-            args.non_interactive = True
 
         config_source_path = None
         if args.resume:
