@@ -146,6 +146,7 @@ def _run_scan_point(
     dimensions,
     scan_mode,
     xyz_file,
+    atoms_template=None,
     scan_dir,
     run_dir,
     charge,
@@ -177,7 +178,10 @@ def _run_scan_point(
     os.makedirs(point_run_dir, exist_ok=True)
     input_xyz_path = resolve_run_path(scan_dir, f"scan_{index:03d}_input.xyz")
     output_xyz_path = None
-    atoms = ase_read(xyz_file).copy()
+    if atoms_template is None:
+        atoms = ase_read(xyz_file).copy()
+    else:
+        atoms = atoms_template.copy()
     _apply_scan_geometry(atoms, dimensions, values)
     ase_write(input_xyz_path, atoms)
     point_scf_config = _prepare_point_scf_config(scf_config, point_run_dir, parallel)
@@ -638,6 +642,11 @@ def run_scan_stage(
             if error:
                 raise error
         else:
+            atoms_template = None
+            if scan_executor == "serial":
+                from ase.io import read as ase_read
+
+                atoms_template = ase_read(args.xyz_file)
             for index, values in enumerate(scan_points):
                 point_result = _run_scan_point(
                     index=index,
@@ -645,6 +654,7 @@ def run_scan_stage(
                     dimensions=dimensions,
                     scan_mode=scan_mode,
                     xyz_file=args.xyz_file,
+                    atoms_template=atoms_template,
                     scan_dir=scan_dir,
                     run_dir=run_dir,
                     charge=charge,

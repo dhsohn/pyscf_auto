@@ -5,6 +5,7 @@ import re
 
 from run_opt_metadata import get_package_version, write_checkpoint
 from run_opt_resources import resolve_run_path
+from run_opt_config import DEFAULT_SCF_CHKFILE
 
 
 def _xc_includes_dispersion(xc):
@@ -61,12 +62,20 @@ def _frequency_units():
 
 
 def _resolve_scf_chkfile(scf_config, run_dir):
-    if not scf_config:
+    if scf_config is None:
         return None
-    chkfile = scf_config.get("chkfile")
-    if not chkfile:
+    if not isinstance(scf_config, dict):
         return None
-    resolved = resolve_run_path(run_dir, chkfile)
+    if "chkfile" in scf_config:
+        chkfile = scf_config.get("chkfile")
+        if not chkfile:
+            return None
+    else:
+        if not run_dir:
+            return None
+        chkfile = DEFAULT_SCF_CHKFILE
+        scf_config["chkfile"] = chkfile
+    resolved = resolve_run_path(run_dir, chkfile) if run_dir else chkfile
     scf_config["chkfile"] = resolved
     return resolved
 

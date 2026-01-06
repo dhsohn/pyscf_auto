@@ -195,6 +195,11 @@ dftflow queue prune --keep-days 30
 - Ensure you pass the run directory (must include `checkpoint.json`; `config_used.json` is preferred).
 - If `--resume` fails to load config, check `config_used.json` for a valid JSON payload.
 
+### SCF non-convergence
+
+- DFTFlow retries SCF with level shift/damping when convergence fails.
+- Set `DFTFLOW_SCF_RETRY=0` to disable automatic retries.
+
 ## Configuration notes
 
 - Set charge/multiplicity in XYZ comment line:
@@ -202,6 +207,7 @@ dftflow queue prune --keep-days 30
 - If omitted, multiplicity is inferred from electron parity.
 - `solvent_dielectric.json` provides PCM epsilon map.
 - `frequency_dispersion_mode` defaults to `none`.
+- SCF checkpoints default to `scf.chk` in the run directory for faster restarts.
 
 ## Repository structure
 

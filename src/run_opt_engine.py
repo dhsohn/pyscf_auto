@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from functools import lru_cache
 
 from run_opt_config import (
     DEFAULT_CHARGE,
@@ -319,6 +320,118 @@ def apply_scf_checkpoint(mf, scf_config, run_dir=None):
     return None, chkfile_path
 
 
+def _scf_retry_enabled():
+    value = os.environ.get("DFTFLOW_SCF_RETRY", "1").strip().lower()
+    return value not in ("0", "false", "no", "off")
+
+
+def _coerce_float(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int(value):
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _merge_scf_config(base_config, overrides):
+    merged = dict(base_config or {})
+    merged.update(overrides or {})
+    return merged
+
+
+def _build_scf_retry_overrides(scf_config):
+    base_config = scf_config or {}
+    base_level = _coerce_float(base_config.get("level_shift"))
+    base_damping = _coerce_float(base_config.get("damping"))
+    base_max = _coerce_int(base_config.get("max_cycle"))
+    retry_targets = (
+        {"level_shift": 0.5, "damping": 0.2, "max_cycle": 50},
+        {"level_shift": 1.0, "damping": 0.3, "max_cycle": 200},
+    )
+    retries = []
+    for target in retry_targets:
+        overrides = {}
+        if base_level is None or base_level < target["level_shift"]:
+            overrides["level_shift"] = target["level_shift"]
+        if base_damping is None or base_damping < target["damping"]:
+            overrides["damping"] = target["damping"]
+        if base_max is None or base_max < target["max_cycle"]:
+            overrides["max_cycle"] = target["max_cycle"]
+        if overrides:
+            retries.append(overrides)
+    return retries
+
+
+def _format_scf_retry_overrides(overrides):
+    parts = []
+    for key in ("level_shift", "damping", "max_cycle"):
+        if key in overrides:
+            parts.append(f"{key}={overrides[key]}")
+    return ", ".join(parts) if parts else "no changes"
+
+
+def _is_scf_converged(mf):
+    converged = getattr(mf, "converged", None)
+    if converged is None:
+        return True
+    return bool(converged)
+
+
+def _unpack_mf_builder_result(result):
+    if isinstance(result, tuple) and len(result) == 2:
+        return result[0], result[1]
+    return result, {}
+
+
+def _run_scf_with_retries(build_mf, scf_config, run_dir, label):
+    base_config = dict(scf_config or {})
+
+    def _run_once(config):
+        mf, info = _unpack_mf_builder_result(build_mf(config))
+        dm0, _ = apply_scf_checkpoint(mf, config, run_dir=run_dir)
+        if dm0 is not None:
+            energy_value = mf.kernel(dm0=dm0)
+        else:
+            energy_value = mf.kernel()
+        return energy_value, mf, info
+
+    energy, mf, info = _run_once(base_config)
+    if _is_scf_converged(mf):
+        return energy, mf, info
+    if not _scf_retry_enabled():
+        return energy, mf, info
+    retries = _build_scf_retry_overrides(base_config)
+    if not retries:
+        return energy, mf, info
+    for attempt, overrides in enumerate(retries, start=1):
+        retry_config = _merge_scf_config(base_config, overrides)
+        logging.warning(
+            "%s did not converge; retrying with SCF settings (%s).",
+            label,
+            _format_scf_retry_overrides(overrides),
+        )
+        energy, mf, info = _run_once(retry_config)
+        if _is_scf_converged(mf):
+            logging.info("%s converged after SCF retry %s.", label, attempt)
+            return energy, mf, info
+    logging.warning(
+        "%s did not converge after %s retries; proceeding with last result.",
+        label,
+        len(retries),
+    )
+    return energy, mf, info
+
+
 def select_ks_type(
     mol=None,
     spin=None,
@@ -395,7 +508,7 @@ def apply_solvent_model(
                 "Install the SMD-enabled PySCF package from the DFTFlow conda channel."
             )
         supported = _supported_smd_solvents()
-        supported_map = _build_smd_supported_map(supported)
+        supported_map = _cached_smd_supported_map()
         normalized = _normalize_solvent_key(solvent_name)
         if normalized in SMD_UNSUPPORTED_SOLVENT_KEYS:
             raise ValueError(
@@ -455,6 +568,12 @@ def _build_smd_supported_map(supported=None):
     return supported_map
 
 
+@lru_cache(maxsize=1)
+def _cached_smd_supported_map():
+    return _build_smd_supported_map(_supported_smd_solvents())
+
+
+@lru_cache(maxsize=1)
 def _supported_smd_solvents():
     try:
         from pyscf.solvent import smd
@@ -503,7 +622,7 @@ def _supported_smd_solvents():
     )
     if not supported:
         raise ValueError("Unable to determine supported SMD solvents from PySCF.")
-    return supported
+    return tuple(supported)
 
 
 def compute_single_point_energy(
@@ -533,34 +652,35 @@ def compute_single_point_energy(
         mol_sp.build()
     if memory_mb:
         mol_sp.max_memory = memory_mb
-    ks_type = select_ks_type(
-        mol=mol_sp,
-        scf_config=scf_config,
-        optimizer_mode=optimizer_mode,
-        multiplicity=multiplicity,
-        log_override=log_override,
-    )
-    if ks_type == "RKS":
-        mf_sp = dft.RKS(mol_sp)
-    else:
-        mf_sp = dft.UKS(mol_sp)
-    mf_sp.xc = xc
-    mf_sp, _ = apply_density_fit_setting(mf_sp, scf_config)
-    if solvent_model is not None:
-        mf_sp = apply_solvent_model(
-            mf_sp,
-            solvent_model,
-            solvent_name,
-            solvent_eps,
+    def _build_mf_sp(scf_settings):
+        ks_type = select_ks_type(
+            mol=mol_sp,
+            scf_config=scf_settings,
+            optimizer_mode=optimizer_mode,
+            multiplicity=multiplicity,
+            log_override=log_override,
         )
-    if verbose:
-        mf_sp.verbose = 4
-    mf_sp, _ = apply_scf_settings(mf_sp, scf_config, apply_density_fit=False)
-    dm0, _ = apply_scf_checkpoint(mf_sp, scf_config, run_dir=run_dir)
-    if dm0 is not None:
-        energy = mf_sp.kernel(dm0=dm0)
-    else:
-        energy = mf_sp.kernel()
+        if ks_type == "RKS":
+            mf_sp = dft.RKS(mol_sp)
+        else:
+            mf_sp = dft.UKS(mol_sp)
+        mf_sp.xc = xc
+        mf_sp, _ = apply_density_fit_setting(mf_sp, scf_settings)
+        if solvent_model is not None:
+            mf_sp = apply_solvent_model(
+                mf_sp,
+                solvent_model,
+                solvent_name,
+                solvent_eps,
+            )
+        if verbose:
+            mf_sp.verbose = 4
+        mf_sp, _ = apply_scf_settings(mf_sp, scf_settings, apply_density_fit=False)
+        return mf_sp
+
+    energy, mf_sp, _ = _run_scf_with_retries(
+        _build_mf_sp, scf_config, run_dir, "Single-point SCF"
+    )
     dispersion_info = None
     if dispersion is not None:
         dispersion_settings = parse_dispersion_settings(
@@ -780,14 +900,16 @@ def compute_frequencies(
         mol_freq.build()
     if memory_mb:
         mol_freq.max_memory = memory_mb
-    ks_type = select_ks_type(
-        mol=mol_freq,
-        scf_config=scf_config,
-        optimizer_mode=optimizer_mode,
-        multiplicity=multiplicity,
-        log_override=log_override,
-    )
-    def _build_mf_freq(*, apply_density_fit):
+
+    def _build_mf_freq(*, apply_density_fit, scf_override=None):
+        scf_settings = scf_override if scf_override is not None else scf_config
+        ks_type = select_ks_type(
+            mol=mol_freq,
+            scf_config=scf_settings,
+            optimizer_mode=optimizer_mode,
+            multiplicity=multiplicity,
+            log_override=log_override,
+        )
         if ks_type == "RKS":
             mf_freq = dft.RKS(mol_freq)
         else:
@@ -795,7 +917,7 @@ def compute_frequencies(
         mf_freq.xc = xc
         density_fit_applied = False
         if apply_density_fit:
-            mf_freq, df_config = apply_density_fit_setting(mf_freq, scf_config)
+            mf_freq, df_config = apply_density_fit_setting(mf_freq, scf_settings)
             density_fit_applied = bool(df_config.get("density_fit"))
         if solvent_model is not None:
             mf_freq = apply_solvent_model(
@@ -806,14 +928,8 @@ def compute_frequencies(
             )
         if verbose:
             mf_freq.verbose = 4
-        mf_freq, _ = apply_scf_settings(mf_freq, scf_config, apply_density_fit=False)
-        return mf_freq, density_fit_applied
-
-    def _run_scf(mf_freq):
-        dm0, _ = apply_scf_checkpoint(mf_freq, scf_config, run_dir=run_dir)
-        if dm0 is not None:
-            return mf_freq.kernel(dm0=dm0)
-        return mf_freq.kernel()
+        mf_freq, _ = apply_scf_settings(mf_freq, scf_settings, apply_density_fit=False)
+        return mf_freq, {"density_fit_applied": density_fit_applied}
 
     def _apply_dispersion(energy_value):
         dispersion_info = None
@@ -841,8 +957,15 @@ def compute_frequencies(
             }
         return energy_value, dispersion_info
 
-    mf_freq, density_fit_applied = _build_mf_freq(apply_density_fit=True)
-    energy = _run_scf(mf_freq)
+    energy, mf_freq, info = _run_scf_with_retries(
+        lambda scf_settings: _build_mf_freq(
+            apply_density_fit=True, scf_override=scf_settings
+        ),
+        scf_config,
+        run_dir,
+        "Frequency SCF",
+    )
+    density_fit_applied = bool(info.get("density_fit_applied"))
     energy, dispersion_info = _apply_dispersion(energy)
     try:
         if hasattr(mf_freq, "Hessian"):
@@ -854,8 +977,15 @@ def compute_frequencies(
             logging.warning(
                 "Density-fitting Hessian failed; retrying without density fitting."
             )
-            mf_freq, _ = _build_mf_freq(apply_density_fit=False)
-            energy = _run_scf(mf_freq)
+            energy, mf_freq, info = _run_scf_with_retries(
+                lambda scf_settings: _build_mf_freq(
+                    apply_density_fit=False, scf_override=scf_settings
+                ),
+                scf_config,
+                run_dir,
+                "Frequency SCF (no density fit)",
+            )
+            density_fit_applied = bool(info.get("density_fit_applied"))
             energy, dispersion_info = _apply_dispersion(energy)
             if hasattr(mf_freq, "Hessian"):
                 hess = mf_freq.Hessian().kernel()

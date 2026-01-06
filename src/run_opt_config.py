@@ -29,6 +29,8 @@ DEFAULT_RUN_METADATA_PATH = "metadata.json"
 DEFAULT_QCSCHEMA_OUTPUT_PATH = "qcschema_result.json"
 DEFAULT_SCAN_RESULT_PATH = "scan_result.json"
 DEFAULT_SCAN_RESULT_CSV_PATH = "scan_result.csv"
+DEFAULT_SCF_CHKFILE = "scf.chk"
+DEFAULT_CONFIG_USED_PATH = "config_used.json"
 
 
 def _normalize_solvent_key(name):

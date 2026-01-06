@@ -1,6 +1,11 @@
 import logging
 
 from run_opt_engine import (
+    _build_scf_retry_overrides,
+    _format_scf_retry_overrides,
+    _is_scf_converged,
+    _merge_scf_config,
+    _scf_retry_enabled,
     apply_density_fit_setting,
     apply_scf_checkpoint,
     apply_scf_settings,
@@ -91,27 +96,66 @@ def _build_pyscf_calculator(
             self._disable_density_fit = False
 
         def _run_scf_and_grad(self, mol, *, allow_density_fit):
-            if ks_type == "RKS":
-                mf = dft.RKS(mol)
-            else:
-                mf = dft.UKS(mol)
-            mf.xc = xc
-            density_fit_applied = False
-            if allow_density_fit:
-                mf, df_config = apply_density_fit_setting(mf, scf_config)
-                density_fit_applied = bool(df_config.get("density_fit"))
-            if solvent_model:
-                mf = apply_solvent_model(mf, solvent_model, solvent_name, solvent_eps)
-            mf, _ = apply_scf_settings(mf, scf_config, apply_density_fit=False)
-            dm0, _ = apply_scf_checkpoint(mf, scf_config, run_dir=run_dir)
-            if verbose:
-                mf.verbose = 4
-            if dm0 is not None:
-                energy_hartree = mf.kernel(dm0=dm0)
-            else:
-                energy_hartree = mf.kernel()
-            grad = mf.nuc_grad_method().kernel()
-            return energy_hartree, grad, density_fit_applied
+            base_config = scf_config or {}
+            retry_overrides = (
+                _build_scf_retry_overrides(base_config) if _scf_retry_enabled() else []
+            )
+            attempts = [(base_config, None)] + [
+                (_merge_scf_config(base_config, overrides), overrides)
+                for overrides in retry_overrides
+            ]
+
+            def _build_mf(scf_settings):
+                if ks_type == "RKS":
+                    mf = dft.RKS(mol)
+                else:
+                    mf = dft.UKS(mol)
+                mf.xc = xc
+                density_fit_applied = False
+                if allow_density_fit:
+                    mf, df_config = apply_density_fit_setting(mf, scf_settings)
+                    density_fit_applied = bool(df_config.get("density_fit"))
+                if solvent_model:
+                    mf = apply_solvent_model(mf, solvent_model, solvent_name, solvent_eps)
+                mf, _ = apply_scf_settings(mf, scf_settings, apply_density_fit=False)
+                if verbose:
+                    mf.verbose = 4
+                return mf, density_fit_applied
+
+            def _run_kernel(mf, scf_settings):
+                dm0, _ = apply_scf_checkpoint(mf, scf_settings, run_dir=run_dir)
+                if dm0 is not None:
+                    return mf.kernel(dm0=dm0)
+                return mf.kernel()
+
+            last_energy = None
+            last_mf = None
+            last_density_fit = False
+            for attempt_index, (scf_settings, overrides) in enumerate(attempts):
+                if attempt_index > 0:
+                    logging.warning(
+                        "SCF did not converge; retrying with SCF settings (%s).",
+                        _format_scf_retry_overrides(overrides or {}),
+                    )
+                mf, density_fit_applied = _build_mf(scf_settings)
+                energy_hartree = _run_kernel(mf, scf_settings)
+                last_energy = energy_hartree
+                last_mf = mf
+                last_density_fit = density_fit_applied
+                if _is_scf_converged(mf):
+                    if attempt_index > 0:
+                        logging.info("SCF converged after retry %s.", attempt_index)
+                    grad = mf.nuc_grad_method().kernel()
+                    return energy_hartree, grad, density_fit_applied
+
+            if retry_overrides:
+                logging.warning(
+                    "SCF did not converge after %s retries; proceeding with last result.",
+                    len(retry_overrides),
+                )
+            grad = last_mf.nuc_grad_method().kernel()
+            return last_energy, grad, last_density_fit
+
 
         def calculate(self, atoms=None, properties=None, system_changes=all_changes):
             super().calculate(atoms, properties, system_changes)

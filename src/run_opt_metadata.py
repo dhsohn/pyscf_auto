@@ -327,6 +327,42 @@ def write_run_metadata(metadata_path, metadata):
         )
 
 
+def write_config_used(config_used_path, config_raw):
+    try:
+        if not config_used_path or not config_raw:
+            return
+        ensure_parent_dir(config_used_path)
+        config_dir = os.path.dirname(config_used_path) or "."
+        temp_handle = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=config_dir,
+            prefix=".config_used.json.",
+            suffix=".tmp",
+            delete=False,
+        )
+        try:
+            with temp_handle as handle:
+                handle.write(config_raw)
+                if not config_raw.endswith("\n"):
+                    handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_handle.name, config_used_path)
+        finally:
+            if os.path.exists(temp_handle.name):
+                try:
+                    os.remove(temp_handle.name)
+                except FileNotFoundError:
+                    pass
+    except Exception as exc:
+        logging.getLogger().warning(
+            "Failed to write config_used.json to %s: %s",
+            config_used_path,
+            exc,
+        )
+
+
 def write_checkpoint(checkpoint_path, checkpoint_payload):
     try:
         if checkpoint_payload is None:

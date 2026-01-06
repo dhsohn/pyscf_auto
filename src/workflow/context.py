@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from run_opt_config import (
+    DEFAULT_CONFIG_USED_PATH,
     DEFAULT_EVENT_LOG_PATH,
     DEFAULT_FREQUENCY_PATH,
     DEFAULT_IRC_PATH,
@@ -24,7 +25,7 @@ from run_opt_engine import (
     select_ks_type,
     total_electron_count,
 )
-from run_opt_metadata import write_checkpoint
+from run_opt_metadata import write_checkpoint, write_config_used
 from run_opt_resources import (
     create_run_directory,
     ensure_parent_dir,
@@ -135,6 +136,9 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     ensure_parent_dir(irc_profile_csv_path)
     ensure_parent_dir(scan_result_path)
     ensure_parent_dir(scan_result_csv_path)
+
+    config_used_path = resolve_run_path(run_dir, DEFAULT_CONFIG_USED_PATH)
+    write_config_used(config_used_path, config_raw)
 
     checkpoint_path = resolve_run_path(run_dir, "checkpoint.json")
     run_id, run_id_history, attempt, checkpoint_payload = _resolve_run_identity(
