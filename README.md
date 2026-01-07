@@ -38,9 +38,12 @@ to the machine where runs are submitted.
   vibrational analysis aligns with the dispersion-corrected PES. Use
   `frequency.dispersion: energy` to keep dispersion energy only, or
   `frequency.dispersion: none` to skip dispersion entirely.
+- Thermochemistry (G/H) uses the dispersion-corrected energy when dispersion is enabled
+  (`numerical`/`energy`); set `frequency.dispersion: none` to exclude dispersion.
 
 ### IRC
 - IRC path from a TS; forward/reverse trajectories with energy profile.
+- Writes `irc_profile.csv` with per-step energies and direction assessment.
 
 ### Scans (1D/2D)
 - Scan bond/angle/dihedral grids with optimization or single-point at each point.
@@ -97,10 +100,13 @@ run.log
 log/run_events.jsonl
 metadata.json
 config_used.json
+qcschema_result.json
 optimized.xyz
 frequency_result.json
 irc_result.json
+irc_profile.csv
 scan_result.json
+scan_result.csv
 ```
 
 ## Installation (SMD-enabled build)
@@ -314,6 +320,8 @@ dftflow queue prune --keep-days 30
 - `frequency.dispersion` defaults to `numerical` (dispersion energy + finite-difference Hessian).
   Use `frequency.dispersion: energy` for energy-only, or `frequency.dispersion: none`
   to disable dispersion for frequencies.
+- `frequency.dispersion_model` overrides the dispersion model for frequencies
+  (defaults to the active dispersion setting for the stage).
 - `frequency.dispersion_step` (Angstrom) controls the numerical step size (default 0.005);
   it applies only when `frequency.dispersion: numerical`.
 - `frequency.use_chkfile` defaults to true; set it to false to disable SCF chkfile reuse
@@ -330,10 +338,15 @@ dftflow queue prune --keep-days 30
 - `scan.max_workers` and `scan.threads_per_worker` are auto-adjusted for local scans to avoid
   CPU oversubscription (workers × threads_per_worker ≤ CPU count).
 - `scan.batch_size` groups points per worker in local scans to reduce process overhead.
+- `scan_result_csv_file` sets the scan CSV output path (default: `scan_result.csv`).
 - `io.write_interval_steps` / `io.write_interval_seconds` control how often optimization
   metadata/checkpoints are written (defaults: 5 steps or 5 seconds).
 - `io.scan_write_interval_points` controls how often scan results/metadata are written
   (default: every point).
+- `irc_profile_csv_file` sets the IRC profile CSV output path (default: `irc_profile.csv`).
+- `qcschema_output_file` sets the QCSchema output path (default: `qcschema_result.json`).
+- `ts_quality` tunes TS quality checks (imaginary count/range and optional mode projection);
+  TS workflows use these checks to decide whether to proceed with IRC/single-point.
 
 ## Repository structure
 
