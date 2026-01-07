@@ -1,10 +1,10 @@
 import logging
 import time
 
-from run_opt_engine import compute_single_point_energy
 from qcschema_export import export_qcschema_result
+from run_opt_engine import compute_single_point_energy
 from .events import finalize_metadata
-from .utils import _update_checkpoint_scf
+from .utils import _resolve_d3_params, _update_checkpoint_scf
 
 
 def run_single_point_stage(stage_context, queue_update_fn):
@@ -22,6 +22,7 @@ def run_single_point_stage(stage_context, queue_update_fn):
             stage_context["calc_solvent_name"],
             stage_context["calc_eps"],
             stage_context["calc_dispersion_model"],
+            _resolve_d3_params(stage_context.get("optimizer_ase_config")),
             stage_context["verbose"],
             stage_context["memory_mb"],
             run_dir=stage_context["run_dir"],
@@ -64,6 +65,7 @@ def run_single_point_stage(stage_context, queue_update_fn):
             stage_context.get("qcschema_output_path"),
             calculation_metadata,
             stage_context.get("input_xyz"),
+            geometry_xyz=stage_context.get("input_xyz"),
             sp_result=sp_result,
         )
         finalize_metadata(

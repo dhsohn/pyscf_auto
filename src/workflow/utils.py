@@ -13,8 +13,23 @@ from run_opt_config import DEFAULT_SCF_CHKFILE
 def _xc_includes_dispersion(xc):
     if not xc:
         return False
-    normalized = re.sub(r"[\s_\-]+", "", str(xc)).lower()
-    return normalized.endswith(("d", "d2", "d3", "d4"))
+    normalized = re.sub(r"[\s_\-]+", "", str(xc))
+    normalized = normalized.replace("\u03c9", "w").replace("\u03a9", "w")
+    normalized = normalized.lower()
+    if normalized.endswith(("d", "d2", "d3", "d4")):
+        return True
+    if "vv10" in normalized:
+        return True
+    dispersion_builtins = {
+        "b97mv",
+        "b97xv",
+        "wb97xv",
+        "wb97mv",
+        "scanv",
+        "rscanv",
+        "r2scanv",
+    }
+    return normalized in dispersion_builtins
 
 
 def _is_vacuum_solvent(name):
@@ -43,6 +58,12 @@ def _normalize_dispersion_settings(stage_label, xc, dispersion_model, allow_disp
     return normalized
 
 
+def _resolve_d3_params(optimizer_ase_dict):
+    if not optimizer_ase_dict:
+        return None
+    return optimizer_ase_dict.get("d3_params") or optimizer_ase_dict.get("dftd3_params")
+
+
 def _frequency_units():
     return {
         "frequencies_wavenumber": "cm^-1",
@@ -56,6 +77,7 @@ def _frequency_units():
         "thermochemistry_entropy": "Hartree/K",
         "thermochemistry_gibbs_correction": "Hartree",
         "thermochemistry_gibbs_free_energy": "Hartree",
+        "thermochemistry_standard_state_correction": "Hartree",
         "min_frequency": "cm^-1",
         "max_frequency": "cm^-1",
         "dispersion_energy_hartree": "Hartree",
@@ -185,6 +207,8 @@ def _thermochemistry_payload(thermo_config, thermochemistry):
         "entropy": None,
         "gibbs_correction": None,
         "gibbs_free_energy": None,
+        "standard_state": None,
+        "standard_state_correction": None,
     }
 
 

@@ -55,6 +55,7 @@ from .utils import (
     _normalize_solvent_settings,
     _prepare_frequency_scf_config,
     _recommend_density_fit,
+    _resolve_d3_params,
     _resolve_scf_chkfile,
     _warn_missing_chkfile,
 )
@@ -522,12 +523,16 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                         calc_solvent_model if calc_solvent_name else None,
                         calc_solvent_name,
                         calc_eps,
-                        calc_dispersion_model
+                        None
                         if calculation_mode == "frequency"
-                        else None,
+                        and freq_dispersion_mode == "none"
+                        else calc_dispersion_model,
                         freq_dispersion_mode
                         if calculation_mode == "frequency"
                         else "none",
+                        dispersion_params=_resolve_d3_params(
+                            context.get("optimizer_ase_dict")
+                        ),
                         require_hessian=calculation_mode in ("frequency", "irc"),
                         verbose=verbose,
                         memory_mb=memory_mb,
@@ -730,10 +735,17 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                         calc_eps,
                         verbose,
                         memory_mb,
+                        dispersion=calc_dispersion_model,
+                        dispersion_hessian_step=context.get("freq_dispersion_step"),
+                        constraints=context["constraints"],
+                        dispersion_params=_resolve_d3_params(
+                            context.get("optimizer_ase_dict")
+                        ),
                         run_dir=run_dir,
                         optimizer_mode=optimizer_mode,
                         multiplicity=multiplicity,
                         profiling_enabled=profiling_enabled,
+                        return_hessian=True,
                     )
                     if mode_result.get("eigenvalue", 0.0) >= 0:
                         logging.warning(
@@ -744,6 +756,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                     stage_context.update(
                         {
                             "mode_vector": mode_result["mode"],
+                            "mode_hessian": mode_result.get("hessian"),
                             "mode_eigenvalue": mode_result.get("eigenvalue"),
                             "mode_profiling": mode_result.get("profiling")
                             if profiling_enabled

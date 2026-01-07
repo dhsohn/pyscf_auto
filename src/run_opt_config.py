@@ -15,6 +15,7 @@ from run_opt_paths import get_app_base_dir, get_runs_base_dir
 DEFAULT_CHARGE = 0
 DEFAULT_SPIN = None
 DEFAULT_MULTIPLICITY = None
+DEFAULT_SPIN_MODE = "strict"
 DEFAULT_CONFIG_PATH = "run_config.json"
 DEFAULT_SOLVENT_MAP_PATH = "solvent_dielectric.json"
 DEFAULT_THREAD_COUNT = None
@@ -64,6 +65,7 @@ RUN_CONFIG_EXAMPLES = {
     "solvent": "\"solvent\": \"water\"",
     "solvent_model": "\"solvent_model\": \"pcm\"",
     "dispersion": "\"dispersion\": \"d3bj\"",
+    "spin_mode": "\"spin_mode\": \"strict\"",
     "calculation_mode": "\"calculation_mode\": \"optimization\"",
     "irc_enabled": "\"irc_enabled\": true",
     "irc": "\"irc\": {\"steps\": 10, \"step_size\": 0.05, \"force_threshold\": 0.01}",
@@ -79,6 +81,7 @@ RUN_CONFIG_EXAMPLES = {
     ),
     "scf.retry_preset": "\"scf\": {\"retry_preset\": \"stable\"}",
     "scf.diis_preset": "\"scf\": {\"diis_preset\": \"stable\"}",
+    "scf.reference": "\"scf\": {\"reference\": \"uks\"}",
     "single_point": (
         "\"single_point\": {\"basis\": \"def2-svp\", \"xc\": \"b3lyp\", "
         "\"solvent\": \"water\", \"dispersion\": \"d3bj\"}"
@@ -145,8 +148,7 @@ class SCFConfig(ConfigModel):
     diis_preset: str | None = None
     retry_preset: str | None = None
     chkfile: str | None = None
-    force_restricted: bool | None = None
-    force_unrestricted: bool | None = None
+    reference: str | None = None
     extra: dict[str, Any] | None = None
 
     @classmethod
@@ -240,6 +242,7 @@ class TSQualityConfig(ConfigModel):
     imaginary_frequency_max_abs: float | None = None
     projection_step: float | None = None
     projection_min_abs: float | None = None
+    enforce: bool | None = None
     internal_coordinates: list[dict[str, Any]] | None = None
 
     @classmethod
@@ -284,6 +287,7 @@ class RunConfig(ConfigModel):
     solvent: str | None = None
     solvent_model: str | None = None
     dispersion: str | None = None
+    spin_mode: str | None = None
     calculation_mode: str | None = None
     enforce_os_memory_limit: bool | None = None
     verbose: bool | None = None
@@ -788,6 +792,7 @@ def validate_run_config(config):
         "solvent_model": (is_str, "Config '{name}' must be a string."),
         "solvent_map": (is_str, "Config '{name}' must be a string path."),
         "dispersion": (is_str, "Config '{name}' must be a string."),
+        "spin_mode": (is_str, "Config '{name}' must be a string."),
     }
     _validate_fields(config, validation_rules)
     for required_key in ("basis", "xc", "solvent"):
@@ -808,6 +813,18 @@ def validate_run_config(config):
                 "Example: {example}.".format(
                     values=allowed_values,
                     example=_schema_example_for_path("calculation_mode"),
+                )
+            )
+    spin_mode = config.get("spin_mode")
+    if spin_mode is not None:
+        allowed_spin_modes = ("auto", "strict")
+        if spin_mode not in allowed_spin_modes:
+            allowed_values = ", ".join(allowed_spin_modes)
+            raise ValueError(
+                "Config 'spin_mode' must be one of: {values}. "
+                "Example: {example}.".format(
+                    values=allowed_values,
+                    example=_schema_example_for_path("spin_mode"),
                 )
             )
     dispersion = config.get("dispersion")
@@ -925,12 +942,24 @@ def validate_run_config(config):
             "diis_preset": (is_str, "Config '{name}' must be a string."),
             "retry_preset": (is_str, "Config '{name}' must be a string."),
             "chkfile": (is_str, "Config '{name}' must be a string path."),
-            "force_restricted": (is_bool, "Config '{name}' must be a boolean."),
-            "force_unrestricted": (is_bool, "Config '{name}' must be a boolean."),
+            "reference": (is_str, "Config '{name}' must be a string."),
             "extra": (is_dict, "Config '{name}' must be an object."),
         }
         _validate_fields(config["scf"], scf_validation_rules, prefix="scf.")
         _validate_scf_extra(config["scf"].get("extra"), "scf")
+        reference_value = config["scf"].get("reference")
+        if reference_value is not None:
+            allowed_reference = ("auto", "rks", "uks")
+            normalized_reference = str(reference_value).strip().lower()
+            if normalized_reference not in allowed_reference:
+                allowed_values = ", ".join(allowed_reference)
+                raise ValueError(
+                    "Config 'scf.reference' must be one of: {values}. "
+                    "Example: {example}.".format(
+                        values=allowed_values,
+                        example=_schema_example_for_path("scf.reference"),
+                    )
+                )
         if config["scf"].get("retry_preset") is not None:
             normalize_preset(
                 config["scf"].get("retry_preset"),
@@ -944,10 +973,6 @@ def validate_run_config(config):
                 diis_aliases,
                 diis_presets,
                 "scf.diis_preset",
-            )
-        if config["scf"].get("force_restricted") and config["scf"].get("force_unrestricted"):
-            raise ValueError(
-                "Config 'scf' must not set both 'force_restricted' and 'force_unrestricted'."
             )
     if "single_point" in config and config["single_point"] is not None:
         if not isinstance(config["single_point"], dict):
@@ -978,12 +1003,24 @@ def validate_run_config(config):
                 "diis_preset": (is_str, "Config '{name}' must be a string."),
                 "retry_preset": (is_str, "Config '{name}' must be a string."),
                 "chkfile": (is_str, "Config '{name}' must be a string path."),
-                "force_restricted": (is_bool, "Config '{name}' must be a boolean."),
-                "force_unrestricted": (is_bool, "Config '{name}' must be a boolean."),
+                "reference": (is_str, "Config '{name}' must be a string."),
                 "extra": (is_dict, "Config '{name}' must be an object."),
             }
             _validate_fields(config["single_point"]["scf"], scf_validation_rules, prefix="single_point.scf.")
             _validate_scf_extra(config["single_point"]["scf"].get("extra"), "single_point.scf")
+            reference_value = config["single_point"]["scf"].get("reference")
+            if reference_value is not None:
+                allowed_reference = ("auto", "rks", "uks")
+                normalized_reference = str(reference_value).strip().lower()
+                if normalized_reference not in allowed_reference:
+                    allowed_values = ", ".join(allowed_reference)
+                    raise ValueError(
+                        "Config 'single_point.scf.reference' must be one of: {values}. "
+                        "Example: {example}.".format(
+                            values=allowed_values,
+                            example=_schema_example_for_path("scf.reference"),
+                        )
+                    )
             if config["single_point"]["scf"].get("retry_preset") is not None:
                 normalize_preset(
                     config["single_point"]["scf"].get("retry_preset"),
@@ -997,14 +1034,6 @@ def validate_run_config(config):
                     diis_aliases,
                     diis_presets,
                     "single_point.scf.diis_preset",
-                )
-            if (
-                config["single_point"]["scf"].get("force_restricted")
-                and config["single_point"]["scf"].get("force_unrestricted")
-            ):
-                raise ValueError(
-                    "Config 'single_point.scf' must not set both 'force_restricted' and "
-                    "'force_unrestricted'."
                 )
     for frequency_key in ("frequency", "freq"):
         if frequency_key in config and config[frequency_key] is not None:
@@ -1044,6 +1073,7 @@ def validate_run_config(config):
                 is_number,
                 "Config '{name}' must be a number (int or float).",
             ),
+            "enforce": (is_bool, "Config '{name}' must be a boolean."),
         }
         _validate_fields(config["ts_quality"], ts_rules, prefix="ts_quality.")
         expected_count = config["ts_quality"].get("expected_imaginary_count")

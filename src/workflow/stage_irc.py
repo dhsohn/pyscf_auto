@@ -33,7 +33,7 @@ def run_irc_stage(stage_context, queue_update_fn):
             stage_context["optimizer_ase_config"],
             stage_context["optimizer_mode"],
             stage_context["constraints"],
-            stage_context["mode_vector"],
+            stage_context.get("mode_hessian"),
             stage_context["irc_steps"],
             stage_context["irc_step_size"],
             stage_context["irc_force_threshold"],

@@ -10,6 +10,7 @@ class RunContext(TypedDict):
     solvent_name: str | None
     solvent_model: str | None
     dispersion_model: str | None
+    spin_mode: str
     optimizer_config: Any
     optimizer_ase_dict: dict[str, Any]
     optimizer_mode: str | None

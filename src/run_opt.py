@@ -37,7 +37,7 @@ from run_opt_metadata import write_run_metadata
 TERMINAL_RESUME_STATUSES = {"completed", "failed", "timeout", "canceled"}
 
 SMOKE_TEST_XYZ = """3
-DFTFlow smoke-test water molecule.
+DFTFlow smoke-test water molecule. charge=0 spin=0
 O     -0.1659811139    2.0308399200   -0.0000031757
 H     -2.5444712639    1.0182403326    0.6584512591
 H     -1.0147968531    2.4412472248   -2.0058431625

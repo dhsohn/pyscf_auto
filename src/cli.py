@@ -1,5 +1,4 @@
 import argparse
-import warnings
 
 from run_opt_config import (
     DEFAULT_CONFIG_PATH,
@@ -26,101 +25,9 @@ def _normalize_cli_args(argv):
     if command in commands:
         return argv
 
-    if "--doctor" in argv:
-        warnings.warn(
-            "`--doctor` is deprecated; use `doctor` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        remaining = [arg for arg in argv if arg != "--doctor"]
-        return ["doctor", *remaining]
-
-    if "--validate-only" in argv:
-        warnings.warn(
-            "`--validate-only` is deprecated; use `validate-config` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        remaining = [arg for arg in argv if arg != "--validate-only"]
-        return ["validate-config", *remaining]
-
-    queue_command = None
-    queue_run_id = None
-    if "--queue-status" in argv:
-        queue_command = "status"
-    if "--queue-cancel" in argv:
-        queue_command = "cancel"
-        index = argv.index("--queue-cancel")
-        if index + 1 < len(argv):
-            queue_run_id = argv[index + 1]
-    if "--queue-retry" in argv:
-        queue_command = "retry"
-        index = argv.index("--queue-retry")
-        if index + 1 < len(argv):
-            queue_run_id = argv[index + 1]
-    if "--queue-requeue-failed" in argv:
-        queue_command = "requeue-failed"
-    if queue_command:
-        warnings.warn(
-            "Queue flags are deprecated; use `queue <command>` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        remaining = [
-            arg
-            for arg in argv
-            if arg
-            not in {
-                "--queue-status",
-                "--queue-cancel",
-                "--queue-retry",
-                "--queue-requeue-failed",
-            }
-        ]
-        if queue_run_id and queue_run_id in remaining:
-            remaining.remove(queue_run_id)
-        normalized = ["queue", queue_command]
-        if queue_run_id:
-            normalized.append(queue_run_id)
-        normalized.extend(remaining)
-        return normalized
-
-    if "--status" in argv or "--status-recent" in argv:
-        warnings.warn(
-            "`--status` flags are deprecated; use `status` subcommands instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        remaining = list(argv)
-        status_target = None
-        recent_value = None
-        if "--status" in remaining:
-            index = remaining.index("--status")
-            if index + 1 < len(remaining):
-                status_target = remaining[index + 1]
-            del remaining[index : index + 2]
-        if "--status-recent" in remaining:
-            index = remaining.index("--status-recent")
-            if index + 1 < len(remaining):
-                recent_value = remaining[index + 1]
-            del remaining[index : index + 2]
-        normalized = ["status"]
-        if status_target:
-            normalized.append(status_target)
-        if recent_value:
-            normalized.extend(["--recent", recent_value])
-        normalized.extend(remaining)
-        return normalized
-
     if "--queue-runner" in argv:
         return ["run", *argv]
-
-    warnings.warn(
-        "Default command is deprecated; use `run` explicitly.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return ["run", *argv]
+    return argv
 
 
 def build_parser():

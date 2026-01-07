@@ -40,6 +40,8 @@ to the machine where runs are submitted.
   `frequency.dispersion: none` to skip dispersion entirely.
 - Thermochemistry (G/H) uses the dispersion-corrected energy when dispersion is enabled
   (`numerical`/`energy`); set `frequency.dispersion: none` to exclude dispersion.
+- For PCM/SMD, Gibbs free energies include a default 1M standard-state correction
+  (see `thermochemistry.standard_state_correction` in the frequency output).
 
 ### IRC
 - IRC path from a TS; forward/reverse trajectories with energy profile.
@@ -313,9 +315,9 @@ dftflow queue prune --keep-days 30
 
 ## Configuration notes
 
-- Set charge/multiplicity in XYZ comment line:
-  - Example: `charge=0 multiplicity=1`
-- If omitted, multiplicity is inferred from electron parity.
+- Set charge/spin in XYZ comment line:
+  - Example: `charge=0 spin=0`
+- `spin_mode: auto` infers spin from electron parity when spin is omitted.
 - `solvent_dielectric.json` provides PCM epsilon map.
 - `frequency.dispersion` defaults to `numerical` (dispersion energy + finite-difference Hessian).
   Use `frequency.dispersion: energy` for energy-only, or `frequency.dispersion: none`
@@ -329,6 +331,7 @@ dftflow queue prune --keep-days 30
 - `scf.retry_preset` controls SCF retry aggressiveness: `fast`, `default`, `stable`, `off`.
 - `scf.diis_preset` sets a DIIS space preset when `scf.diis` is unset: `fast`, `default`,
   `stable`, `off`.
+- `scf.reference` chooses the SCF reference: `auto`, `rks`, or `uks` (default: `auto`).
 - For large systems, DFTFlow logs a recommendation to enable
   `scf.extra.density_fit: autoaux` for faster SCF/gradient/Hessian.
 - SCF checkpoints default to `scf.chk` in the run directory for faster restarts.
@@ -345,8 +348,10 @@ dftflow queue prune --keep-days 30
   (default: every point).
 - `irc_profile_csv_file` sets the IRC profile CSV output path (default: `irc_profile.csv`).
 - `qcschema_output_file` sets the QCSchema output path (default: `qcschema_result.json`).
+- `spin_mode` controls spin handling: `auto` uses parity when spin is missing,
+  `strict` requires spin in the XYZ comment line (default).
 - `ts_quality` tunes TS quality checks (imaginary count/range and optional mode projection);
-  TS workflows use these checks to decide whether to proceed with IRC/single-point.
+  set `ts_quality.enforce: true` to skip IRC/single-point when checks fail (default: false).
 
 ## Repository structure
 

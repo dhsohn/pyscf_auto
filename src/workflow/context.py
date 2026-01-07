@@ -15,6 +15,7 @@ from run_opt_config import (
     DEFAULT_RUN_METADATA_PATH,
     DEFAULT_SCAN_RESULT_CSV_PATH,
     DEFAULT_SCAN_RESULT_PATH,
+    DEFAULT_SPIN_MODE,
     DEFAULT_SOLVENT_MAP_PATH,
     DEFAULT_THREAD_COUNT,
     RunConfig,
@@ -59,6 +60,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     solvent_name = config.solvent
     solvent_model = config.solvent_model
     dispersion_model = config.dispersion
+    spin_mode = config.spin_mode or DEFAULT_SPIN_MODE
     optimizer_config = config.optimizer
     optimizer_ase_config = optimizer_config.ase if optimizer_config else None
     optimizer_ase_dict = optimizer_ase_config.to_dict() if optimizer_ase_config else {}
@@ -219,6 +221,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
         "solvent_name": solvent_name,
         "solvent_model": solvent_model,
         "dispersion_model": dispersion_model,
+        "spin_mode": spin_mode,
         "optimizer_config": optimizer_config,
         "optimizer_ase_dict": optimizer_ase_dict,
         "optimizer_mode": optimizer_mode,
@@ -266,10 +269,12 @@ def build_molecule_context(args, context: RunContext, memory_mb) -> MoleculeCont
     from pyscf import dft, gto
 
     atom_spec, charge, spin, multiplicity = load_xyz(args.xyz_file)
-    if context["optimizer_mode"] == "transition_state" and multiplicity is None:
+    spin_mode = context.get("spin_mode", DEFAULT_SPIN_MODE)
+    if spin_mode == "strict" and spin is None:
         raise ValueError(
-            "Transition-state mode requires multiplicity; provide it in the "
-            "XYZ comment line."
+            "Spin not specified. Set spin in the XYZ comment line. "
+            "Multiplicity alone is not accepted in strict mode; use "
+            "spin_mode=auto to allow parity-based spin estimation."
         )
     total_electrons = total_electron_count(atom_spec, charge)
     if multiplicity is not None:
@@ -282,13 +287,14 @@ def build_molecule_context(args, context: RunContext, memory_mb) -> MoleculeCont
                 f"spin={spin} implies multiplicity={spin + 1}, "
                 f"but multiplicity={multiplicity} was provided."
             )
-        spin = multiplicity_spin
+        if spin is None:
+            spin = multiplicity_spin
     if spin is None:
         spin = total_electrons % 2
         logging.warning(
             "Auto spin estimation enabled: spin not specified; using parity "
             "(spin = total_electrons %% 2). For TS/radical/metal/diradical cases, "
-            "set multiplicity in the XYZ comment line to avoid incorrect states."
+            "set spin in the XYZ comment line to avoid incorrect states."
         )
     elif spin < 0 or spin > total_electrons:
         raise ValueError(

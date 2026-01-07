@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import socket
 from typing import Any, Mapping
@@ -40,8 +41,32 @@ def _atom_spec_to_molecule(atom_spec: str, charge: int, multiplicity: int | None
 def build_atomic_input(
     calculation_metadata: Mapping[str, Any],
     input_xyz: str,
+    *,
+    geometry_xyz: str | None = None,
 ) -> dict[str, Any]:
-    atom_spec, charge, _spin, multiplicity = load_xyz(input_xyz)
+    xyz_path = geometry_xyz or input_xyz
+    if geometry_xyz and not os.path.isfile(geometry_xyz):
+        logging.warning(
+            "QCSchema geometry file not found (%s); falling back to input XYZ.",
+            geometry_xyz,
+        )
+        xyz_path = input_xyz
+    atom_spec, xyz_charge, xyz_spin, xyz_multiplicity = load_xyz(xyz_path)
+    charge = xyz_charge
+    spin = xyz_spin
+    multiplicity = xyz_multiplicity
+    if isinstance(calculation_metadata, dict):
+        meta_charge = calculation_metadata.get("charge")
+        if meta_charge is not None:
+            charge = meta_charge
+        meta_spin = calculation_metadata.get("spin")
+        if meta_spin is not None:
+            spin = meta_spin
+        meta_multiplicity = calculation_metadata.get("multiplicity")
+        if meta_multiplicity is not None:
+            multiplicity = meta_multiplicity
+    if multiplicity is None and spin is not None:
+        multiplicity = spin + 1
     molecule = _atom_spec_to_molecule(atom_spec, charge, multiplicity)
     model = _model_from_metadata(calculation_metadata, sp_result=None, frequency_payload=None)
     keywords = {
@@ -168,11 +193,16 @@ def build_atomic_result(
     calculation_metadata: Mapping[str, Any],
     input_xyz: str,
     *,
+    geometry_xyz: str | None = None,
     frequency_payload: Mapping[str, Any] | None = None,
     irc_payload: Mapping[str, Any] | None = None,
     sp_result: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    atomic_input = build_atomic_input(calculation_metadata, input_xyz)
+    atomic_input = build_atomic_input(
+        calculation_metadata,
+        input_xyz,
+        geometry_xyz=geometry_xyz,
+    )
     return_result, _ = _resolve_return_result(
         calculation_metadata, sp_result, frequency_payload
     )
@@ -211,6 +241,7 @@ def export_qcschema_result(
     calculation_metadata: Mapping[str, Any],
     input_xyz: str | None,
     *,
+    geometry_xyz: str | None = None,
     frequency_payload: Mapping[str, Any] | None = None,
     irc_payload: Mapping[str, Any] | None = None,
     sp_result: Mapping[str, Any] | None = None,
@@ -221,6 +252,7 @@ def export_qcschema_result(
     payload = build_atomic_result(
         calculation_metadata,
         input_xyz,
+        geometry_xyz=geometry_xyz,
         frequency_payload=frequency_payload,
         irc_payload=irc_payload,
         sp_result=sp_result,

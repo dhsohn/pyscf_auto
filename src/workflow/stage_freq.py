@@ -8,6 +8,7 @@ from .events import finalize_metadata
 from .utils import (
     _frequency_units,
     _frequency_versions,
+    _resolve_d3_params,
     _thermochemistry_payload,
     _update_checkpoint_scf,
 )
@@ -29,9 +30,11 @@ def run_frequency_stage(stage_context, queue_update_fn):
             stage_context["calc_dispersion_model"],
             stage_context["freq_dispersion_mode"],
             stage_context.get("freq_dispersion_step"),
+            _resolve_d3_params(stage_context.get("optimizer_ase_config")),
             stage_context["thermo"],
             stage_context["verbose"],
             stage_context["memory_mb"],
+            stage_context.get("constraints"),
             run_dir=stage_context["run_dir"],
             optimizer_mode=stage_context["optimizer_mode"],
             multiplicity=stage_context["multiplicity"],
@@ -116,6 +119,7 @@ def run_frequency_stage(stage_context, queue_update_fn):
             stage_context.get("qcschema_output_path"),
             calculation_metadata,
             stage_context.get("input_xyz"),
+            geometry_xyz=stage_context.get("input_xyz"),
             frequency_payload=frequency_payload,
         )
         finalize_metadata(

@@ -35,6 +35,7 @@ from .utils import (
     _dimension_key,
     _merge_constraints,
     _parse_scan_dimensions,
+    _resolve_d3_params,
     _seed_scf_checkpoint,
 )
 
@@ -315,6 +316,7 @@ def _run_scan_point(
         solvent_name,
         solvent_eps,
         dispersion_model,
+        _resolve_d3_params(optimizer_ase_dict),
         verbose,
         memory_mb,
         run_dir=point_run_dir,
@@ -694,8 +696,9 @@ def run_scan_stage(
             calc_solvent_model if calc_solvent_name else None,
             calc_solvent_name,
             calc_eps,
-            None,
+            calc_dispersion_model,
             "none",
+            dispersion_params=_resolve_d3_params(optimizer_ase_dict),
             require_hessian=False,
             verbose=verbose,
             memory_mb=memory_mb,

@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 from run_opt_engine import (
@@ -566,15 +567,13 @@ def _run_ase_irc(
     optimizer_config,
     optimization_mode,
     constraints,
-    mode_vector,
+    mode_hessian,
     steps,
     step_size,
     force_threshold,
     profiling_enabled=False,
     output_prefix="irc",
 ):
-    import numpy as np
-
     try:
         from ase import units
         from ase.io import read as ase_read
@@ -584,6 +583,14 @@ def _run_ase_irc(
             "ASE IRC requested but ASE or required calculators are not installed. "
             "Install ASE with DFTD3 support (e.g., `conda install -c conda-forge ase`)."
         ) from exc
+    try:
+        from sella import IRC as SellaIRC
+    except ImportError as exc:
+        raise ImportError(
+            "IRC requires the Sella optimizer. Install it with "
+            "`conda install -c daehyupsohn -c conda-forge sella`."
+        ) from exc
+    import numpy as np
 
     atoms = ase_read(input_xyz)
     atoms.calc = _build_pyscf_calculator(
@@ -606,49 +613,74 @@ def _run_ase_irc(
         profiling_enabled=profiling_enabled,
     )
     _apply_constraints(atoms, constraints)
-    positions = atoms.get_positions()
-    mode = np.asarray(mode_vector, dtype=float)
-    if mode.shape != positions.shape:
-        raise ValueError("IRC mode vector shape does not match atom coordinates.")
-    mode_norm = np.linalg.norm(mode)
-    if mode_norm == 0:
-        raise ValueError("IRC mode vector is zero; cannot start IRC.")
-    initial_direction = mode / mode_norm
-    masses = atoms.get_masses()
-    if np.any(masses <= 0):
-        raise ValueError("Invalid atomic masses encountered for IRC.")
-    profile = []
     outputs = {}
+    profile = []
+    hessian_ev = None
+    if mode_hessian is not None:
+        hessian_array = np.asarray(mode_hessian)
+        if hessian_array.ndim == 4:
+            natoms = hessian_array.shape[0]
+            if natoms != len(atoms):
+                raise ValueError("IRC Hessian atom count does not match coordinates.")
+            hessian_array = hessian_array.reshape(natoms * 3, natoms * 3)
+        elif hessian_array.ndim == 2:
+            expected = len(atoms) * 3
+            if hessian_array.shape != (expected, expected):
+                raise ValueError("IRC Hessian shape does not match coordinates.")
+        else:
+            raise ValueError("IRC Hessian must be a 2D or 4D array.")
+        hessian_ev = hessian_array * (units.Hartree / (units.Bohr ** 2))
 
-    for label, sign in (("forward", 1.0), ("reverse", -1.0)):
-        step_atoms = atoms.copy()
-        step_atoms.calc = atoms.calc
-        direction_unit = initial_direction
-        step_atoms.set_positions(positions + sign * step_size * direction_unit)
-        output_xyz = resolve_run_path(run_dir, f"{output_prefix}_{label}.xyz")
-        outputs[label] = output_xyz
+    def _hessian_function(_atoms):
+        if hessian_ev is None:
+            return None
+        return hessian_ev
+
+    irc_kwargs = {"dx": step_size}
+    if hessian_ev is not None:
+        irc_kwargs["hessian_function"] = _hessian_function
+    ts_positions = atoms.get_positions().copy()
+
+    def _build_irc():
+        return SellaIRC(atoms, logfile=None, trajectory=None, **irc_kwargs)
+
+    def _run_direction(direction):
+        output_xyz = resolve_run_path(run_dir, f"{output_prefix}_{direction}.xyz")
+        outputs[direction] = output_xyz
         ensure_parent_dir(output_xyz)
-        for step_index in range(steps):
-            energy_ev = step_atoms.get_potential_energy()
-            forces = step_atoms.get_forces()
-            profile.append(
+        if os.path.exists(output_xyz):
+            os.remove(output_xyz)
+        direction_profile = []
+        atoms.set_positions(ts_positions)
+        irc = _build_irc()
+        start_step = irc.nsteps
+
+        def _record_step():
+            if irc.nsteps == start_step:
+                return
+            step_index = irc.nsteps - start_step - 1
+            energy_ev = atoms.get_potential_energy()
+            direction_profile.append(
                 {
-                    "direction": label,
+                    "direction": direction,
                     "step": step_index,
                     "energy_ev": float(energy_ev),
                     "energy_hartree": float(energy_ev / units.Hartree),
                 }
             )
-            ase_write(output_xyz, step_atoms, format="xyz", append=True)
-            force_norm = np.linalg.norm(forces)
-            if force_norm < force_threshold:
-                break
-            mass_weighted = forces / masses[:, None]
-            mass_norm = np.linalg.norm(mass_weighted)
-            if mass_norm == 0:
-                break
-            direction_unit = mass_weighted / mass_norm
-            step_atoms.set_positions(step_atoms.get_positions() + step_size * direction_unit)
+            ase_write(output_xyz, atoms, format="xyz", append=True)
+
+        irc.attach(_record_step, interval=1)
+        irc.run(
+            fmax=force_threshold,
+            fmax_inner=force_threshold,
+            steps=steps,
+            direction=direction,
+        )
+        return direction_profile
+
+    for direction in ("forward", "reverse"):
+        profile.extend(_run_direction(direction))
 
     profiling = None
     profile_getter = getattr(atoms.calc, "get_profile", None)

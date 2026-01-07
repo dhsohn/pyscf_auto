@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import re
 import time
@@ -44,12 +45,155 @@ def _compute_dispersion_energy(atoms, dispersion_settings):
     return d4_calc.get_potential_energy(atoms=atoms), "ase-dftd4"
 
 
+def _collect_constraint_jacobians(atoms, constraints):
+    import numpy as np
+    from ase.constraints import FixInternals
+
+    if not constraints:
+        return None
+    if not isinstance(constraints, dict):
+        raise ValueError("Config 'constraints' must be an object.")
+    bonds = constraints.get("bonds") or []
+    angles = constraints.get("angles") or []
+    dihedrals = constraints.get("dihedrals") or []
+    if not bonds and not angles and not dihedrals:
+        return None
+
+    atom_count = len(atoms)
+
+    def _validate_index(value, path):
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"{path} must be an integer.")
+        if value < 0 or value >= atom_count:
+            raise ValueError(
+                f"{path} index {value} is out of range for {atom_count} atoms."
+            )
+
+    def _validate_number(value, path):
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError(f"{path} must be a number.")
+
+    bond_entries = []
+    for idx, bond in enumerate(bonds):
+        if not isinstance(bond, dict):
+            raise ValueError(f"constraints.bonds[{idx}] must be an object.")
+        for key in ("i", "j"):
+            if key not in bond:
+                raise ValueError(f"constraints.bonds[{idx}] must define '{key}'.")
+            _validate_index(bond[key], f"constraints.bonds[{idx}].{key}")
+        if "length" not in bond:
+            raise ValueError(f"constraints.bonds[{idx}] must define 'length'.")
+        _validate_number(bond["length"], f"constraints.bonds[{idx}].length")
+        if bond["length"] <= 0:
+            raise ValueError(
+                f"constraints.bonds[{idx}].length must be > 0 (Angstrom)."
+            )
+        bond_entries.append([float(bond["length"]), [bond["i"], bond["j"]]])
+
+    angle_entries = []
+    for idx, angle in enumerate(angles):
+        if not isinstance(angle, dict):
+            raise ValueError(f"constraints.angles[{idx}] must be an object.")
+        for key in ("i", "j", "k"):
+            if key not in angle:
+                raise ValueError(f"constraints.angles[{idx}] must define '{key}'.")
+            _validate_index(angle[key], f"constraints.angles[{idx}].{key}")
+        if "angle" not in angle:
+            raise ValueError(f"constraints.angles[{idx}] must define 'angle'.")
+        _validate_number(angle["angle"], f"constraints.angles[{idx}].angle")
+        if not (0 < angle["angle"] <= 180):
+            raise ValueError(
+                f"constraints.angles[{idx}].angle must be between 0 and 180 degrees."
+            )
+        angle_entries.append(
+            [float(angle["angle"]), [angle["i"], angle["j"], angle["k"]]]
+        )
+
+    dihedral_entries = []
+    for idx, dihedral in enumerate(dihedrals):
+        if not isinstance(dihedral, dict):
+            raise ValueError(f"constraints.dihedrals[{idx}] must be an object.")
+        for key in ("i", "j", "k", "l"):
+            if key not in dihedral:
+                raise ValueError(f"constraints.dihedrals[{idx}] must define '{key}'.")
+            _validate_index(dihedral[key], f"constraints.dihedrals[{idx}].{key}")
+        if "dihedral" not in dihedral:
+            raise ValueError(f"constraints.dihedrals[{idx}] must define 'dihedral'.")
+        _validate_number(
+            dihedral["dihedral"], f"constraints.dihedrals[{idx}].dihedral"
+        )
+        if not (-180 <= dihedral["dihedral"] <= 180):
+            raise ValueError(
+                "constraints.dihedrals[{idx}].dihedral must be between -180 and 180 "
+                "degrees.".format(idx=idx)
+            )
+        dihedral_entries.append(
+            [
+                float(dihedral["dihedral"]),
+                [dihedral["i"], dihedral["j"], dihedral["k"], dihedral["l"]],
+            ]
+        )
+
+    fix = FixInternals(
+        bonds=bond_entries or None,
+        angles_deg=angle_entries or None,
+        dihedrals_deg=dihedral_entries or None,
+    )
+    fix.initialize(atoms)
+    jacobians = []
+    for constraint in fix.constraints:
+        constraint.setup_jacobian(atoms.positions)
+        jac = np.asarray(constraint.jacobian, dtype=float).reshape(-1)
+        if jac.shape[0] != atom_count * 3:
+            raise ValueError("Constraint jacobian shape does not match coordinates.")
+        jacobians.append(jac)
+    if not jacobians:
+        return None
+    return np.vstack(jacobians)
+
+
+def _project_hessian_constraints(hess, mol, constraint_jacobians):
+    import numpy as np
+
+    hess_array = np.asarray(hess, dtype=float)
+    natm = mol.natm
+    if hess_array.ndim == 4:
+        hess_2d = hess_array.reshape(natm * 3, natm * 3)
+    else:
+        hess_2d = hess_array
+    masses = np.asarray(mol.atom_mass_list(isotope_avg=True), dtype=float)
+    if masses.size != natm:
+        raise ValueError("Atomic mass list does not match atom count.")
+    mass_vector = np.repeat(masses, 3)
+    if np.any(mass_vector <= 0):
+        raise ValueError("Invalid atomic masses encountered for constraint projection.")
+    sqrt_mass = np.sqrt(mass_vector)
+    hess_mw = hess_2d / np.outer(sqrt_mass, sqrt_mass)
+    jac = np.asarray(constraint_jacobians, dtype=float)
+    if jac.ndim == 1:
+        jac = jac[None, :]
+    if jac.shape[1] != hess_mw.shape[0]:
+        raise ValueError("Constraint jacobian dimension does not match Hessian.")
+    jac_mw = jac / sqrt_mass
+    q, _ = np.linalg.qr(jac_mw.T)
+    if q.size == 0:
+        return hess
+    projector = np.eye(hess_mw.shape[0]) - q @ q.T
+    hess_mw_proj = projector.T @ hess_mw @ projector
+    hess_mw_proj = 0.5 * (hess_mw_proj + hess_mw_proj.T)
+    hess_proj = hess_mw_proj * np.outer(sqrt_mass, sqrt_mass)
+    if hess_array.ndim == 4:
+        return hess_proj.reshape(natm, natm, 3, 3)
+    return hess_proj
+
+
 def parse_xyz_metadata(xyz_lines):
     """
     Parse charge/spin metadata from the comment line of an XYZ file.
 
     Expected format in the second line (comment), for example:
-      charge=0 spin=1 multiplicity=2
+      charge=0 spin=0
+    Multiplicity is optional and parsed for compatibility.
 
     Returns (charge, spin, multiplicity), defaulting to charge 0 and None otherwise.
     """
@@ -513,28 +657,17 @@ def select_ks_type(
         raise ValueError("select_ks_type requires either mol or spin.")
     resolved_spin = mol.spin if mol is not None else spin
     default_type = "RKS" if resolved_spin == 0 else "UKS"
-    force_restricted = bool(scf_config.get("force_restricted")) if scf_config else False
-    force_unrestricted = bool(scf_config.get("force_unrestricted")) if scf_config else False
-    if force_restricted and force_unrestricted:
-        raise ValueError(
-            "Config 'scf' must not set both 'force_restricted' and 'force_unrestricted'."
-        )
-    if force_restricted or force_unrestricted:
-        if optimizer_mode == "transition_state" and multiplicity and multiplicity > 1:
-            if log_override:
-                logging.warning(
-                    "SCF override requested (%s) ignored for transition-state multiplicity %s; "
-                    "using default %s.",
-                    "force_restricted" if force_restricted else "force_unrestricted",
-                    multiplicity,
-                    default_type,
-                )
-            return default_type
-        requested_type = "RKS" if force_restricted else "UKS"
+    reference = None
+    if scf_config is not None:
+        reference = scf_config.get("reference")
+    if reference is not None:
+        reference = str(reference).strip().lower()
+    if reference in ("rks", "uks"):
+        requested_type = "RKS" if reference == "rks" else "UKS"
         if log_override:
             logging.warning(
-                "SCF override requested (%s): using %s (default %s).",
-                "force_restricted" if force_restricted else "force_unrestricted",
+                "SCF reference requested (%s): using %s (default %s).",
+                reference,
                 requested_type,
                 default_type,
             )
@@ -703,6 +836,7 @@ def compute_single_point_energy(
     solvent_name,
     solvent_eps,
     dispersion,
+    dispersion_params,
     verbose,
     memory_mb,
     run_dir=None,
@@ -758,7 +892,11 @@ def compute_single_point_energy(
     dispersion_info = None
     if dispersion is not None:
         dispersion_settings = parse_dispersion_settings(
-            dispersion, xc, charge=mol_sp.charge, spin=mol_sp.spin
+            dispersion,
+            xc,
+            charge=mol_sp.charge,
+            spin=mol_sp.spin,
+            d3_params=dispersion_params,
         )
         positions = mol_sp.atom_coords(unit="Angstrom")
         if hasattr(mol_sp, "atom_symbols"):
@@ -959,9 +1097,11 @@ def compute_frequencies(
     dispersion,
     dispersion_hessian_mode,
     dispersion_hessian_step,
+    dispersion_params,
     thermo,
     verbose,
     memory_mb,
+    constraints,
     run_dir=None,
     optimizer_mode=None,
     multiplicity=None,
@@ -974,6 +1114,7 @@ def compute_frequencies(
     from ase.data import atomic_masses, atomic_numbers
     import numpy as np
     from pyscf import dft, hessian as pyscf_hessian
+    from pyscf.data import nist
     from pyscf.hessian import thermo as pyscf_thermo
 
     xc = normalize_xc_functional(xc)
@@ -1058,17 +1199,23 @@ def compute_frequencies(
         atoms.set_positions(base_positions)
         return hessian
 
-    dispersion_payload = {"energy_hartree": 0.0, "info": None, "hessian": None}
-    if dispersion is not None:
-        dispersion_settings = parse_dispersion_settings(
-            dispersion, xc, charge=mol_freq.charge, spin=mol_freq.spin
-        )
+    atoms = None
+    if dispersion is not None or constraints:
         positions = mol_freq.atom_coords(unit="Angstrom")
         if hasattr(mol_freq, "atom_symbols"):
             symbols = mol_freq.atom_symbols()
         else:
             symbols = [mol_freq.atom_symbol(i) for i in range(mol_freq.natm)]
         atoms = Atoms(symbols=symbols, positions=positions)
+    dispersion_payload = {"energy_hartree": 0.0, "info": None, "hessian": None}
+    if dispersion is not None:
+        dispersion_settings = parse_dispersion_settings(
+            dispersion,
+            xc,
+            charge=mol_freq.charge,
+            spin=mol_freq.spin,
+            d3_params=dispersion_params,
+        )
         dispersion_calc, dispersion_backend = _build_dispersion_calculator(
             atoms, dispersion_settings
         )
@@ -1163,6 +1310,36 @@ def compute_frequencies(
             raise
     if dispersion_hessian is not None:
         hess = hess + dispersion_hessian
+    constraint_projection = None
+    if constraints:
+        constraint_projection = {
+            "requested": True,
+            "projected": False,
+            "count": 0,
+            "error": None,
+        }
+        try:
+            if atoms is None:
+                positions = mol_freq.atom_coords(unit="Angstrom")
+                if hasattr(mol_freq, "atom_symbols"):
+                    symbols = mol_freq.atom_symbols()
+                else:
+                    symbols = [mol_freq.atom_symbol(i) for i in range(mol_freq.natm)]
+                atoms = Atoms(symbols=symbols, positions=positions)
+            jacobians = _collect_constraint_jacobians(atoms, constraints)
+            if jacobians is None:
+                constraint_projection["error"] = "no_constraints"
+            else:
+                constraint_projection["count"] = jacobians.shape[0]
+                hess = _project_hessian_constraints(hess, mol_freq, jacobians)
+                constraint_projection["projected"] = True
+                logging.info(
+                    "Applied constraint-projected Hessian (%s constraints).",
+                    constraint_projection["count"],
+                )
+        except Exception as exc:
+            constraint_projection["error"] = str(exc)
+            logging.warning("Constraint-projected Hessian skipped: %s", exc)
     harmonic = pyscf_thermo.harmonic_analysis(mol_freq, hess, imaginary_freq=False)
     freq_wavenumber = None
     freq_au = None
@@ -1251,6 +1428,55 @@ def compute_frequencies(
                 enthalpy_total_value += dispersion_energy_hartree
             if gibbs_total_value is not None:
                 gibbs_total_value += dispersion_energy_hartree
+        standard_state = None
+        standard_state_correction = None
+        if solvent_model and solvent_name and str(solvent_name).strip().lower() != "vacuum":
+            temperature_value = None
+            pressure_value_pa = None
+            temp_entry = thermo_result.get("temperature") if thermo_result else None
+            if isinstance(temp_entry, (list, tuple)) and temp_entry:
+                temperature_value = _to_scalar(temp_entry[0])
+            elif temp_entry is not None:
+                temperature_value = _to_scalar(temp_entry)
+            if temperature_value is None and temperature is not None:
+                temperature_value = _to_scalar(temperature)
+            pressure_entry = thermo_result.get("pressure") if thermo_result else None
+            if isinstance(pressure_entry, (list, tuple)) and pressure_entry:
+                pressure_value_pa = _to_scalar(pressure_entry[0])
+            elif pressure_entry is not None:
+                pressure_value_pa = _to_scalar(pressure_entry)
+            if pressure_value_pa is None and pressure is not None:
+                unit = str(pressure_unit or "pa").strip().lower()
+                if unit in ("atm", "atmosphere", "atmospheres"):
+                    pressure_value_pa = float(pressure) * 101325.0
+                elif unit in ("bar", "bars"):
+                    pressure_value_pa = float(pressure) * 100000.0
+                elif unit in ("kpa",):
+                    pressure_value_pa = float(pressure) * 1000.0
+                elif unit in ("mpa",):
+                    pressure_value_pa = float(pressure) * 1_000_000.0
+                elif unit in ("torr", "mmhg"):
+                    pressure_value_pa = float(pressure) * 133.322368
+                else:
+                    pressure_value_pa = float(pressure)
+            if temperature_value and pressure_value_pa:
+                ratio = (
+                    1000.0
+                    * nist.AVOGADRO
+                    * nist.BOLTZMANN
+                    * float(temperature_value)
+                    / float(pressure_value_pa)
+                )
+                if ratio > 0:
+                    standard_state_correction = (
+                        nist.BOLTZMANN
+                        * float(temperature_value)
+                        * math.log(ratio)
+                        / nist.HARTREE2J
+                    )
+                    standard_state = "1M"
+                    if gibbs_total_value is not None:
+                        gibbs_total_value += standard_state_correction
         thermal_correction_enthalpy = None
         gibbs_correction = None
         gibbs_free_energy = None
@@ -1268,6 +1494,8 @@ def compute_frequencies(
             "entropy": entropy_value,
             "gibbs_correction": _to_scalar(gibbs_correction),
             "gibbs_free_energy": _to_scalar(gibbs_free_energy),
+            "standard_state": standard_state,
+            "standard_state_correction": _to_scalar(standard_state_correction),
         }
     imaginary_count = None
     imaginary_status = None
@@ -1447,6 +1675,7 @@ def compute_frequencies(
         "ts_quality": ts_quality_payload,
         "dispersion": dispersion_info,
         "thermochemistry": thermochemistry,
+        "constraint_projection": constraint_projection,
     }
     if profiling:
         result["profiling"] = profiling
@@ -1463,13 +1692,19 @@ def compute_imaginary_mode(
     solvent_eps,
     verbose,
     memory_mb,
+    dispersion=None,
+    dispersion_hessian_step=None,
+    constraints=None,
+    dispersion_params=None,
     run_dir=None,
     optimizer_mode=None,
     multiplicity=None,
     profiling_enabled=False,
     log_override=True,
+    return_hessian=False,
 ):
     try:
+        from ase import Atoms, units
         from ase.data import atomic_masses, atomic_numbers
     except ImportError as exc:
         raise ImportError(
@@ -1565,9 +1800,71 @@ def compute_imaginary_mode(
                 )
         else:
             raise
+    if dispersion is not None:
+        positions = mol_mode.atom_coords(unit="Angstrom")
+        if hasattr(mol_mode, "atom_symbols"):
+            symbols = mol_mode.atom_symbols()
+        else:
+            symbols = [mol_mode.atom_symbol(i) for i in range(mol_mode.natm)]
+        atoms = Atoms(symbols=symbols, positions=positions)
+        dispersion_settings = parse_dispersion_settings(
+            dispersion,
+            xc,
+            charge=mol_mode.charge,
+            spin=mol_mode.spin,
+            d3_params=dispersion_params,
+        )
+        backend = dispersion_settings["backend"]
+        settings = dispersion_settings["settings"]
+        if backend == "d3":
+            d3_cls, _ = load_d3_calculator()
+            if d3_cls is None:
+                raise ImportError(
+                    "DFTD3 dispersion requested but no DFTD3 calculator is available. "
+                    "Install `dftd3` (recommended)."
+                )
+            dispersion_calc = d3_cls(atoms=atoms, **settings)
+        else:
+            from dftd4.ase import DFTD4
+
+            dispersion_calc = DFTD4(atoms=atoms, **settings)
+        atoms.calc = dispersion_calc
+        step = dispersion_hessian_step if dispersion_hessian_step is not None else 0.005
+        base_positions = atoms.get_positions()
+        natoms = len(base_positions)
+        dispersion_hessian = np.zeros((natoms, natoms, 3, 3), dtype=float)
+        for atom_idx in range(natoms):
+            for coord in range(3):
+                pos_plus = base_positions.copy()
+                pos_plus[atom_idx, coord] += step
+                atoms.set_positions(pos_plus)
+                forces_plus = atoms.get_forces()
+                pos_minus = base_positions.copy()
+                pos_minus[atom_idx, coord] -= step
+                atoms.set_positions(pos_minus)
+                forces_minus = atoms.get_forces()
+                delta_forces = (forces_plus - forces_minus) / (2.0 * step)
+                dispersion_hessian[:, atom_idx, :, coord] = -delta_forces
+        atoms.set_positions(base_positions)
+        dispersion_hessian *= (1.0 / units.Hartree) / (units.Bohr ** 2)
+        hess = hess + dispersion_hessian
+
+    if constraints:
+        positions = mol_mode.atom_coords(unit="Angstrom")
+        if hasattr(mol_mode, "atom_symbols"):
+            symbols = mol_mode.atom_symbols()
+        else:
+            symbols = [mol_mode.atom_symbol(i) for i in range(mol_mode.natm)]
+        atoms = Atoms(symbols=symbols, positions=positions)
+        jacobians = _collect_constraint_jacobians(atoms, constraints)
+        if jacobians is not None:
+            hess = _project_hessian_constraints(hess, mol_mode, jacobians)
+
     result = _extract_imaginary_mode_from_hessian(
         hess, mol_mode, atomic_masses, atomic_numbers
     )
+    if return_hessian:
+        result["hessian"] = hess
     if profiling:
         result["profiling"] = profiling
     return result
@@ -1583,6 +1880,7 @@ def run_capability_check(
     solvent_eps,
     dispersion,
     dispersion_hessian_mode,
+    dispersion_params=None,
     require_hessian=False,
     verbose=False,
     memory_mb=None,
@@ -1598,6 +1896,14 @@ def run_capability_check(
         mol_check.build()
     if memory_mb:
         mol_check.max_memory = memory_mb
+    if dispersion is not None:
+        parse_dispersion_settings(
+            dispersion,
+            normalize_xc_functional(xc),
+            charge=mol_check.charge,
+            spin=mol_check.spin,
+            d3_params=dispersion_params,
+        )
     ks_type = select_ks_type(
         mol=mol_check,
         scf_config=scf_config,

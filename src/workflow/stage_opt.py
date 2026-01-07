@@ -35,9 +35,33 @@ from .utils import (
     _evaluate_irc_profile,
     _frequency_units,
     _frequency_versions,
+    _resolve_d3_params,
     _seed_scf_checkpoint,
     _thermochemistry_payload,
 )
+
+
+def _is_ts_quality_enforced(ts_quality) -> bool:
+    if ts_quality is None:
+        return False
+    if hasattr(ts_quality, "enforce"):
+        enforce_value = getattr(ts_quality, "enforce")
+        if enforce_value is not None:
+            return bool(enforce_value)
+    if hasattr(ts_quality, "to_dict"):
+        try:
+            ts_quality_dict = ts_quality.to_dict()
+        except Exception:
+            ts_quality_dict = None
+        if isinstance(ts_quality_dict, dict):
+            enforce_value = ts_quality_dict.get("enforce")
+            if enforce_value is not None:
+                return bool(enforce_value)
+    if isinstance(ts_quality, dict):
+        enforce_value = ts_quality.get("enforce")
+        if enforce_value is not None:
+            return bool(enforce_value)
+    return False
 
 
 def run_optimization_stage(
@@ -107,8 +131,9 @@ def run_optimization_stage(
             solvent_model,
             solvent_name,
             context["eps"],
-            None,
+            context["dispersion_model"],
             "none",
+            dispersion_params=_resolve_d3_params(optimizer_ase_dict),
             require_hessian=False,
             verbose=verbose,
             memory_mb=memory_mb,
@@ -127,8 +152,11 @@ def run_optimization_stage(
                 context["sp_solvent_model"] if context["sp_solvent_name"] else None,
                 context["sp_solvent_name"],
                 context["sp_eps"],
-                context["freq_dispersion_model"],
+                None
+                if context["freq_dispersion_mode"] == "none"
+                else context["freq_dispersion_model"],
                 context["freq_dispersion_mode"],
+                dispersion_params=_resolve_d3_params(optimizer_ase_dict),
                 require_hessian=True,
                 verbose=verbose,
                 memory_mb=memory_mb,
@@ -520,9 +548,11 @@ def run_optimization_stage(
                 context["freq_dispersion_model"],
                 context["freq_dispersion_mode"],
                 context.get("freq_dispersion_step"),
+                _resolve_d3_params(optimizer_ase_dict),
                 context["thermo"],
                 verbose,
                 memory_mb,
+                context["constraints"],
                 run_dir=run_dir,
                 optimizer_mode=optimizer_mode,
                 multiplicity=multiplicity,
@@ -615,38 +645,74 @@ def run_optimization_stage(
         with open(frequency_output_path, "w", encoding="utf-8") as handle:
             json.dump(frequency_payload, handle, indent=2)
         optimization_metadata["frequency"] = frequency_payload
+    ts_quality_enforced = _is_ts_quality_enforced(context.get("ts_quality"))
+    if ts_quality_enforced and not frequency_enabled:
+        logging.warning(
+            "TS quality enforcement requested but frequency calculation disabled; "
+            "proceeding without gating."
+        )
     irc_status = "skipped"
     irc_skip_reason = None
     if irc_enabled:
         expected_imaginary = 1 if optimizer_mode == "transition_state" else 0
-        if frequency_enabled and imaginary_count is not None:
-            ts_quality_result = (
-                frequency_payload.get("results", {}).get("ts_quality")
-                if frequency_payload
-                else None
-            )
-            if ts_quality_result is None:
-                ts_quality_result = {}
-            allow_irc = ts_quality_result.get("allow_irc")
-            if optimizer_mode == "transition_state" and allow_irc is not None:
-                if not allow_irc:
-                    irc_skip_reason = ts_quality_result.get("message") or (
-                        "TS quality checks did not pass; skipping IRC."
+        if frequency_enabled:
+            if imaginary_count is None:
+                if ts_quality_enforced:
+                    irc_skip_reason = (
+                        "Imaginary frequency count unavailable; skipping IRC."
                     )
                     logging.warning("Skipping IRC: %s", irc_skip_reason)
                 else:
+                    logging.warning(
+                        "Imaginary frequency count unavailable; proceeding with IRC "
+                        "because ts_quality.enforce is false."
+                    )
                     irc_status = "pending"
-            elif imaginary_count != expected_imaginary:
-                irc_skip_reason = (
-                    "Imaginary frequency count does not match expected "
-                    f"{expected_imaginary}."
-                )
-                logging.warning("Skipping IRC: %s", irc_skip_reason)
             else:
-                irc_status = "pending"
+                ts_quality_result = (
+                    frequency_payload.get("results", {}).get("ts_quality")
+                    if frequency_payload
+                    else None
+                )
+                if ts_quality_result is None:
+                    ts_quality_result = {}
+                allow_irc = ts_quality_result.get("allow_irc")
+                if optimizer_mode == "transition_state" and allow_irc is not None:
+                    if not allow_irc:
+                        message = ts_quality_result.get("message") or (
+                            "TS quality checks did not pass."
+                        )
+                        if ts_quality_enforced:
+                            irc_skip_reason = message
+                            logging.warning("Skipping IRC: %s", irc_skip_reason)
+                        else:
+                            logging.warning(
+                                "TS quality checks did not pass; proceeding with IRC "
+                                "because ts_quality.enforce is false. %s",
+                                message,
+                            )
+                            irc_status = "pending"
+                    else:
+                        irc_status = "pending"
+                elif imaginary_count != expected_imaginary:
+                    if ts_quality_enforced:
+                        irc_skip_reason = (
+                            "Imaginary frequency count does not match expected "
+                            f"{expected_imaginary}."
+                        )
+                        logging.warning("Skipping IRC: %s", irc_skip_reason)
+                    else:
+                        logging.warning(
+                            "Imaginary frequency count does not match expected %s; "
+                            "proceeding with IRC because ts_quality.enforce is false.",
+                            expected_imaginary,
+                        )
+                        irc_status = "pending"
+                else:
+                    irc_status = "pending"
         else:
             irc_status = "pending"
-            if optimizer_mode == "transition_state" and not frequency_enabled:
+            if optimizer_mode == "transition_state":
                 logging.warning(
                     "IRC requested without frequency check; proceeding without "
                     "imaginary mode validation."
@@ -660,11 +726,18 @@ def run_optimization_stage(
         if frequency_enabled:
             expected_imaginary = 1 if optimizer_mode == "transition_state" else 0
             if imaginary_count is None:
-                logging.warning(
-                    "Skipping single-point calculation because imaginary frequency "
-                    "count is unavailable."
-                )
-                sp_skip_reason = "Imaginary frequency count unavailable."
+                if ts_quality_enforced:
+                    logging.warning(
+                        "Skipping single-point calculation because imaginary "
+                        "frequency count is unavailable."
+                    )
+                    sp_skip_reason = "Imaginary frequency count unavailable."
+                else:
+                    logging.warning(
+                        "Imaginary frequency count unavailable; proceeding with "
+                        "single-point because ts_quality.enforce is false."
+                    )
+                    run_single_point = True
             elif optimizer_mode == "transition_state":
                 ts_quality_result = (
                     frequency_payload.get("results", {}).get("ts_quality")
@@ -679,26 +752,45 @@ def run_optimization_stage(
                 if allow_sp:
                     run_single_point = True
                 else:
-                    logging.warning(
-                        "Skipping single-point calculation due to TS quality checks."
+                    message = ts_quality_result.get("message") or (
+                        "TS quality checks did not pass."
                     )
-                    sp_skip_reason = (
-                        ts_quality_result.get("message")
-                        or "TS quality checks did not pass."
-                    )
+                    if ts_quality_enforced:
+                        logging.warning(
+                            "Skipping single-point calculation due to TS quality "
+                            "checks."
+                        )
+                        sp_skip_reason = message
+                    else:
+                        logging.warning(
+                            "TS quality checks did not pass; proceeding with "
+                            "single-point because ts_quality.enforce is false. %s",
+                            message,
+                        )
+                        run_single_point = True
             elif imaginary_count == expected_imaginary:
                 run_single_point = True
             else:
-                logging.warning(
-                    "Skipping single-point calculation because imaginary frequency "
-                    "count %s does not match expected %s.",
-                    imaginary_count,
-                    expected_imaginary,
-                )
-                sp_skip_reason = (
-                    "Imaginary frequency count does not match expected "
-                    f"{expected_imaginary}."
-                )
+                if ts_quality_enforced:
+                    logging.warning(
+                        "Skipping single-point calculation because imaginary "
+                        "frequency count %s does not match expected %s.",
+                        imaginary_count,
+                        expected_imaginary,
+                    )
+                    sp_skip_reason = (
+                        "Imaginary frequency count does not match expected "
+                        f"{expected_imaginary}."
+                    )
+                else:
+                    logging.warning(
+                        "Imaginary frequency count %s does not match expected %s; "
+                        "proceeding with single-point because ts_quality.enforce is "
+                        "false.",
+                        imaginary_count,
+                        expected_imaginary,
+                    )
+                    run_single_point = True
         else:
             run_single_point = True
     else:
@@ -725,12 +817,20 @@ def run_optimization_stage(
             json.dump(frequency_payload, handle, indent=2)
 
     ts_energy_ev = None
+    ts_energy_hartree = None
     if not isinstance(frequency_payload, dict):
         frequency_payload = {}
     freq_results = frequency_payload.get("results") or {}
-    ts_energy_ev = freq_results.get("energy")
-    if ts_energy_ev is None:
-        ts_energy_ev = last_scf_energy
+    ts_energy_hartree = freq_results.get("energy")
+    if ts_energy_hartree is None:
+        ts_energy_hartree = last_scf_energy
+    if ts_energy_hartree is not None:
+        try:
+            from ase import units
+        except Exception:
+            ts_energy_ev = ts_energy_hartree * 27.211386245988
+        else:
+            ts_energy_ev = ts_energy_hartree * units.Hartree
 
     try:
         if irc_status == "pending":
@@ -756,10 +856,15 @@ def run_optimization_stage(
                     context["sp_eps"],
                     verbose,
                     memory_mb,
+                    dispersion=context["sp_dispersion_model"],
+                    dispersion_hessian_step=context.get("freq_dispersion_step"),
+                    constraints=context["constraints"],
+                    dispersion_params=_resolve_d3_params(optimizer_ase_dict),
                     run_dir=run_dir,
                     optimizer_mode=optimizer_mode,
                     multiplicity=multiplicity,
                     profiling_enabled=profiling_enabled,
+                    return_hessian=True,
                 )
                 if mode_result.get("eigenvalue", 0.0) >= 0:
                     logging.warning(
@@ -786,7 +891,7 @@ def run_optimization_stage(
                     optimizer_ase_dict,
                     optimizer_mode,
                     context["constraints"],
-                    mode_result["mode"],
+                    mode_result.get("hessian"),
                     irc_steps,
                     irc_step_size,
                     irc_force_threshold,
@@ -842,6 +947,7 @@ def run_optimization_stage(
                 context["sp_solvent_name"],
                 context["sp_eps"],
                 context["freq_dispersion_model"],
+                _resolve_d3_params(optimizer_ase_dict),
                 verbose,
                 memory_mb,
                 run_dir=run_dir,
@@ -893,6 +999,7 @@ def run_optimization_stage(
         context.get("qcschema_output_path"),
         optimization_metadata,
         args.xyz_file,
+        geometry_xyz=optimized_xyz_path,
         frequency_payload=frequency_payload,
         irc_payload=irc_payload,
         sp_result=sp_result,
