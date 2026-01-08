@@ -27,14 +27,14 @@ def test_validate_only_passes(tmp_path):
     config_text = (REPO_ROOT / "run_config.json").read_text(encoding="utf-8")
     (tmp_path / "run_config.json").write_text(config_text, encoding="utf-8")
 
-    result = run_cli(tmp_path, ["--validate-only", "--config", "run_config.json"])
+    result = run_cli(tmp_path, ["validate-config", "run_config.json"])
 
     assert result.returncode == 0
-    assert "Config validation passed" in result.stdout
+    assert "Config validation passed:" in result.stdout
 
 
 def test_queue_status_empty_when_missing_queue_file(tmp_path):
-    result = run_cli(tmp_path, ["--queue-status"])
+    result = run_cli(tmp_path, ["queue", "status"])
 
     assert result.returncode == 0
     assert "Queue is empty." in result.stdout
@@ -59,7 +59,7 @@ def test_queue_status_shows_entries(tmp_path):
         encoding="utf-8",
     )
 
-    result = run_cli(tmp_path, ["--queue-status"])
+    result = run_cli(tmp_path, ["queue", "status"])
 
     assert result.returncode == 0
     assert "run-123" in result.stdout
@@ -85,7 +85,7 @@ def test_queue_cancel_updates_queue_file(tmp_path):
         encoding="utf-8",
     )
 
-    result = run_cli(tmp_path, ["--queue-cancel", run_id])
+    result = run_cli(tmp_path, ["queue", "cancel", run_id])
 
     assert result.returncode == 0
     assert f"Canceled queued run: {run_id}" in result.stdout

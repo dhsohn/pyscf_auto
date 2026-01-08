@@ -1710,6 +1710,7 @@ def compute_imaginary_mode(
         raise ImportError(
             "IRC mode extraction requires ASE (ase.data). Install ASE to proceed."
         ) from exc
+    import numpy as np
     from pyscf import dft, hessian as pyscf_hessian
 
     xc = normalize_xc_functional(xc)

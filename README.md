@@ -93,6 +93,23 @@ Smoke-test artifacts (per case):
 Smoke-test summary:
 - `smoke_progress.json`
 
+## Test Report (2026-01-08)
+
+Environment:
+- OS: macOS 26.2 (arm64)
+- Python: 3.12.12 (conda-forge)
+- Conda env: dftflow-test
+- Packages: dftflow 0.1.0, pyscf 2.11.0, ase 3.27.0, dftd3 1.2.1, dftd4 3.7.0
+
+Tests:
+- `pytest -q` (PYTHONPATH=src): 32 passed
+- `dftflow smoke-test --smoke-mode quick`: 160/160 completed, 0 failed, 0 skipped
+  - Run dir: `runs/smoke/2026-01-08_110458`
+
+Notes:
+- Smoke tests skip capability checks by design.
+- Only osx-arm64 is validated so far; other platforms are untested.
+
 ## Output layout
 
 Per run directory (example):
