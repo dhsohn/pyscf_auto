@@ -47,7 +47,7 @@ def _is_ts_quality_enforced(ts_quality) -> bool:
     if ts_quality is None:
         return False
     if hasattr(ts_quality, "enforce"):
-        enforce_value = getattr(ts_quality, "enforce")
+        enforce_value = ts_quality.enforce
         if enforce_value is not None:
             return bool(enforce_value)
     if hasattr(ts_quality, "to_dict"):
