@@ -108,7 +108,8 @@ Tests:
 
 Notes:
 - Smoke tests skip capability checks by design.
-- Only osx-arm64 is validated so far; other platforms are untested.
+- Only osx-arm64 is validated so far; linux-64 and osx-64 are untested.
+- Windows is not supported because PySCF is unavailable for win-64.
 
 ## Output layout
 
@@ -147,8 +148,8 @@ Keep `daehyupsohn` first so the SMD-enabled PySCF build is preferred.
 
 Desktop GUI is distributed separately (see the `dftflow_gui` repository).
 
-Testing note: only `osx-arm64` has been validated so far. Packages for `linux-64`,
-`osx-64`, and `win-64` are provided but not yet tested.
+Testing note: only `osx-arm64` has been validated so far. `linux-64` and `osx-64`
+are untested. Windows is not supported because PySCF is unavailable for `win-64`.
 
 ## Usage
 
