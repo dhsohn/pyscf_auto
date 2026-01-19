@@ -15,13 +15,6 @@ energy, frequency, IRC, and scans with consistent logging and reproducible metad
 - GitHub Pages manual (KR/EN): https://dhsohn.github.io/DFTFlow/
 - Source docs: `docs/`
 
-Local preview:
-
-```bash
-pip install mkdocs
-mkdocs serve
-```
-
 ## Quickstart
 
 ```bash
