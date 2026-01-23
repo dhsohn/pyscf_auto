@@ -16,6 +16,8 @@ nav:
       - 출력물: ko/outputs.md
       - 문제 해결: ko/troubleshooting.md
       - CLI 레퍼런스: ko/cli.md
+      - 설계 문서:
+          - 엔진 추상화: ko/design/engine-abstraction.md
   - English:
       - Overview: en/index.md
       - Install & Quickstart: en/getting-started.md
@@ -26,6 +28,8 @@ nav:
       - Outputs: en/outputs.md
       - Troubleshooting: en/troubleshooting.md
       - CLI Reference: en/cli.md
+      - Design Notes:
+          - Engine Abstraction: en/design/engine-abstraction.md
 
 markdown_extensions:
   - fenced_code
