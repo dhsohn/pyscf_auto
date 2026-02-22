@@ -1,5 +1,5 @@
-site_name: DFTFlow User Manual
-site_description: DFTFlow CLI user manual (Korean and English)
+site_name: pyscf_auto User Manual
+site_description: pyscf_auto CLI user manual (Korean and English)
 
 theme:
   name: mkdocs

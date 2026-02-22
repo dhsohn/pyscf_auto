@@ -1,7 +1,7 @@
-# DFTFlow 리팩토링 가능성 진단 보고서
+# pyscf_auto 리팩토링 가능성 진단 보고서
 
 작성일: 2026-02-06  
-대상 저장소: `/Users/daehyupsohn/DFTFlow`
+대상 저장소: `/Users/daehyupsohn/pyscf_auto`
 
 ## 1) 결론 요약
 

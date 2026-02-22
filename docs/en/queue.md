@@ -3,17 +3,17 @@
 ## Basics
 
 - Use `--background` to enqueue a run; the queue runner executes it.
-- Foreground runs are also recorded for status tracking and show up in `dftflow queue status`.
+- Foreground runs are also recorded for status tracking and show up in `pyscf_auto queue status`.
 
 ## Queue/Background Flow
 
 ```mermaid
 flowchart TD
-  A[dftflow run] --> B{background?}
+  A[pyscf_auto run] --> B{background?}
   B -->|yes| C[enqueue run]
   C --> D[start queue runner]
   D --> E[queue runner picks entry]
-  E --> F[subprocess runs dftflow without background]
+  E --> F[subprocess runs pyscf_auto without background]
   F --> G[update status]
   B -->|no| H[foreground run]
   H --> I[register queue entry]
@@ -39,17 +39,17 @@ stateDiagram-v2
 ## Common Commands
 
 ```bash
-dftflow run input.xyz --config run_config.yaml --background
+pyscf_auto run input.xyz --config run_config.yaml --background
 
-dftflow queue status
-dftflow queue cancel <RUN_ID>
-dftflow queue retry <RUN_ID>
-dftflow queue requeue-failed
-dftflow queue prune --keep-days 30
-dftflow queue archive
+pyscf_auto queue status
+pyscf_auto queue cancel <RUN_ID>
+pyscf_auto queue retry <RUN_ID>
+pyscf_auto queue requeue-failed
+pyscf_auto queue prune --keep-days 30
+pyscf_auto queue archive
 ```
 
 ## Related Files
 
-- Queue file: `~/DFTFlow/runs/queue.json`
-- Queue runner log: `~/DFTFlow/log/queue_runner.log`
+- Queue file: `~/pyscf_auto/runs/queue.json`
+- Queue runner log: `~/pyscf_auto/log/queue_runner.log`

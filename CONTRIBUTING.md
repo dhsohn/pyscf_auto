@@ -1,6 +1,6 @@
-# Contributing to DFTFlow
+# Contributing to pyscf_auto
 
-Thanks for helping improve DFTFlow. This repo targets conda-only distribution and
+Thanks for helping improve pyscf_auto. This repo targets conda-only distribution and
 the core CLI workflow; the desktop GUI lives in the separate `dftflow_gui` repo.
 
 ## Quick start

@@ -1,4 +1,4 @@
-"""Compatibility wrapper for running DFTFlow from the repository root."""
+"""Compatibility wrapper for running pyscf_auto from the repository root."""
 
 from src.run_opt import main
 

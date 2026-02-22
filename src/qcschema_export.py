@@ -179,8 +179,8 @@ def _build_provenance(calculation_metadata: Mapping[str, Any]) -> dict[str, Any]
     )
     if git_metadata is None:
         git_metadata = collect_git_metadata(os.getcwd())
-    version = get_package_version("dftflow")
-    routine = ["DFTFlow"]
+    version = get_package_version("pyscf_auto") or get_package_version("dftflow")
+    routine = ["pyscf_auto"]
     calculation_mode = calculation_metadata.get("calculation_mode")
     if calculation_mode:
         routine.append(f"mode={calculation_mode}")
@@ -194,7 +194,7 @@ def _build_provenance(calculation_metadata: Mapping[str, Any]) -> dict[str, Any]
     summary = calculation_metadata.get("summary") if isinstance(calculation_metadata, dict) else None
     walltime = summary.get("elapsed_seconds") if isinstance(summary, dict) else None
     provenance = {
-        "creator": "DFTFlow",
+        "creator": "pyscf_auto",
         "version": version,
         "routine": routine,
         "walltime": walltime,
@@ -223,7 +223,7 @@ def build_atomic_result(
     gradient = calculation_metadata.get("gradient") if isinstance(calculation_metadata, dict) else None
     properties = _build_properties(return_result, gradient)
     extras = {
-        "dftflow": {
+        "pyscf_auto": {
             "calculation_metadata": dict(calculation_metadata),
             "frequency_payload": frequency_payload,
             "irc_payload": irc_payload,

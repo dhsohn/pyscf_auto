@@ -265,7 +265,7 @@ def _disable_smd_solvent_settings(stage_label, solvent_name, solvent_model):
         return solvent_name, solvent_model
     raise ValueError(
         "{stage} stage requested SMD, but SMD is unavailable in this PySCF build. "
-        "Install the SMD-enabled PySCF package from the DFTFlow conda channel."
+        "Install the SMD-enabled PySCF package from the pyscf_auto conda channel."
         .format(stage=stage_label)
     )
 

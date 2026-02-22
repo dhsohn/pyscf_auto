@@ -3,17 +3,17 @@
 ## 기본 개념
 
 - `--background` 옵션으로 실행하면 큐에 들어가고, 큐 러너가 실행을 담당합니다.
-- 포그라운드 실행도 큐 상태에 기록되어 `dftflow queue status`에서 함께 보입니다.
+- 포그라운드 실행도 큐 상태에 기록되어 `pyscf_auto queue status`에서 함께 보입니다.
 
 ## 큐/백그라운드 흐름
 
 ```mermaid
 flowchart TD
-  A[dftflow run] --> B{background?}
+  A[pyscf_auto run] --> B{background?}
   B -->|yes| C[enqueue run]
   C --> D[start queue runner]
   D --> E[queue runner picks entry]
-  E --> F[subprocess runs dftflow without background]
+  E --> F[subprocess runs pyscf_auto without background]
   F --> G[update status]
   B -->|no| H[foreground run]
   H --> I[register queue entry]
@@ -39,17 +39,17 @@ stateDiagram-v2
 ## 주요 명령어
 
 ```bash
-dftflow run input.xyz --config run_config.yaml --background
+pyscf_auto run input.xyz --config run_config.yaml --background
 
-dftflow queue status
-dftflow queue cancel <RUN_ID>
-dftflow queue retry <RUN_ID>
-dftflow queue requeue-failed
-dftflow queue prune --keep-days 30
-dftflow queue archive
+pyscf_auto queue status
+pyscf_auto queue cancel <RUN_ID>
+pyscf_auto queue retry <RUN_ID>
+pyscf_auto queue requeue-failed
+pyscf_auto queue prune --keep-days 30
+pyscf_auto queue archive
 ```
 
 ## 관련 파일
 
-- 큐 파일: `~/DFTFlow/runs/queue.json`
-- 큐 러너 로그: `~/DFTFlow/log/queue_runner.log`
+- 큐 파일: `~/pyscf_auto/runs/queue.json`
+- 큐 러너 로그: `~/pyscf_auto/log/queue_runner.log`

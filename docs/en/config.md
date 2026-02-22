@@ -1,6 +1,6 @@
 # Configuration
 
-DFTFlow configuration supports `.json`, `.yaml/.yml`, and `.toml`.
+pyscf_auto configuration supports `.json`, `.yaml/.yml`, and `.toml`.
 
 ## Key Fields
 
@@ -59,5 +59,5 @@ scan:
 ## Validation
 
 ```bash
-dftflow validate-config run_config.yaml
+pyscf_auto validate-config run_config.yaml
 ```

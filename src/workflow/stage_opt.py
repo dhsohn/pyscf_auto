@@ -7,6 +7,7 @@ import traceback
 from datetime import datetime
 from typing import Any, cast
 
+from env_compat import getenv_with_legacy
 from qcschema_export import export_qcschema_result
 from run_opt_logging import ensure_stream_newlines
 from run_opt_metadata import (
@@ -147,10 +148,15 @@ def _run_optimization_capability_checks(
     verbose,
     memory_mb,
 ) -> None:
-    skip_capability_check = bool(os.environ.get("DFTFLOW_SKIP_CAPABILITY_CHECK"))
+    skip_capability_check = bool(
+        getenv_with_legacy(
+            "PYSCF_AUTO_SKIP_CAPABILITY_CHECK",
+            "DFTFLOW_SKIP_CAPABILITY_CHECK",
+        )
+    )
     if skip_capability_check:
         logging.warning(
-            "Skipping capability check (DFTFLOW_SKIP_CAPABILITY_CHECK=1)."
+            "Skipping capability check (PYSCF_AUTO_SKIP_CAPABILITY_CHECK=1)."
         )
         return
 

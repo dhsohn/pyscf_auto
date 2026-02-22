@@ -2,20 +2,20 @@
 
 ## Installation
 
-DFTFlow is distributed via conda.
+pyscf_auto is distributed via conda.
 
 ```bash
-conda create -n dftflow -c daehyupsohn -c conda-forge dftflow
-conda activate dftflow
+conda create -n pyscf_auto -c daehyupsohn -c conda-forge pyscf_auto
+conda activate pyscf_auto
 ```
 
-- `pip install dftflow` is not supported.
+- `pip install pyscf_auto` is not supported.
 - The GUI is a separate app (`dftflow_gui`).
 
 ## Environment Check
 
 ```bash
-dftflow doctor
+pyscf_auto doctor
 ```
 
 ## Configuration File
@@ -41,13 +41,13 @@ frequency_enabled: true
 ## First Run
 
 ```bash
-dftflow run path/to/input.xyz --config run_config.yaml
+pyscf_auto run path/to/input.xyz --config run_config.yaml
 ```
 
 ## Check Results
 
 ```bash
-dftflow status --recent 5
+pyscf_auto status --recent 5
 ```
 
 Logs are written to `log/run.log` inside the run directory by default.

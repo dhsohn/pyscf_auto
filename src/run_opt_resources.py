@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from env_compat import getenv_with_legacy
 from run_opt_paths import get_runs_base_dir
 THREAD_ENV_VARS = (
     "OMP_NUM_THREADS",
@@ -23,12 +24,26 @@ THREAD_ENV_VARS = (
     "BLIS_NUM_THREADS",
 )
 
-RUN_ARCHIVE_AFTER_DAYS = int(os.environ.get("DFTFLOW_RUN_ARCHIVE_AFTER_DAYS", "7"))
+RUN_ARCHIVE_AFTER_DAYS = int(
+    getenv_with_legacy(
+        "PYSCF_AUTO_RUN_ARCHIVE_AFTER_DAYS",
+        "DFTFLOW_RUN_ARCHIVE_AFTER_DAYS",
+        "7",
+    )
+)
 RUN_ARCHIVE_INTERVAL_HOURS = int(
-    os.environ.get("DFTFLOW_RUN_ARCHIVE_INTERVAL_HOURS", "6")
+    getenv_with_legacy(
+        "PYSCF_AUTO_RUN_ARCHIVE_INTERVAL_HOURS",
+        "DFTFLOW_RUN_ARCHIVE_INTERVAL_HOURS",
+        "6",
+    )
 )
 RUN_ARCHIVE_MAX_PER_PASS = int(
-    os.environ.get("DFTFLOW_RUN_ARCHIVE_MAX_PER_PASS", "5")
+    getenv_with_legacy(
+        "PYSCF_AUTO_RUN_ARCHIVE_MAX_PER_PASS",
+        "DFTFLOW_RUN_ARCHIVE_MAX_PER_PASS",
+        "5",
+    )
 )
 RUN_ARCHIVE_DIRNAME = "archive"
 RUN_ARCHIVE_STATE_FILENAME = ".archive_state.json"

@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an enhancement for DFTFlow
+description: Suggest an enhancement for pyscf_auto
 labels: ["type:feature"]
 body:
   - type: textarea
@@ -11,7 +11,7 @@ body:
   - type: textarea
     attributes:
       label: Proposed solution
-      description: What would you like DFTFlow to do?
+      description: What would you like pyscf_auto to do?
     validations:
       required: true
   - type: textarea

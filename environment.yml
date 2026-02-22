@@ -1,4 +1,4 @@
-name: dftflow
+name: pyscf_auto
 channels:
   - conda-forge
 dependencies:

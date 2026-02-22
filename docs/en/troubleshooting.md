@@ -11,14 +11,14 @@ conda install -c daehyupsohn -c conda-forge pyscf
 
 ## SCF Convergence Failures
 
-- DFTFlow retries with level shift/damping by default.
-- Disable retries with `DFTFLOW_SCF_RETRY=0`.
+- pyscf_auto retries with level shift/damping by default.
+- Disable retries with `PYSCF_AUTO_SCF_RETRY=0`.
 
 ## Queue Appears Stuck
 
-- Check status: `dftflow queue status`
-- Check runner log: `~/DFTFlow/log/queue_runner.log`
-- Requeue failed: `dftflow queue requeue-failed`
+- Check status: `pyscf_auto queue status`
+- Check runner log: `~/pyscf_auto/log/queue_runner.log`
+- Requeue failed: `pyscf_auto queue requeue-failed`
 
 ## Memory/Threads
 
@@ -28,5 +28,5 @@ conda install -c daehyupsohn -c conda-forge pyscf
 ## Diagnostics
 
 ```bash
-dftflow doctor
+pyscf_auto doctor
 ```

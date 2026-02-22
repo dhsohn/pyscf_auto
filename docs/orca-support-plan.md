@@ -1,7 +1,7 @@
-# DFTFlow ORCA 지원 도입 계획 보고서
+# pyscf_auto ORCA 지원 도입 계획 보고서
 
 ## 1. 목적
-DFTFlow에 ORCA 실행 백엔드를 추가해 기존 워크플로우(`single_point`, `optimization`, `frequency`, `irc`, `scan`)를 동일한 인터페이스로 ORCA에서도 실행 가능하게 한다.
+pyscf_auto에 ORCA 실행 백엔드를 추가해 기존 워크플로우(`single_point`, `optimization`, `frequency`, `irc`, `scan`)를 동일한 인터페이스로 ORCA에서도 실행 가능하게 한다.
 
 ## 2. 1차 목표 범위
 - 지원 스테이지: `single_point`, `optimization`, `frequency`

@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dftflow"
+name = "pyscf_auto"
 version = "0.1.0"
 description = "Lightweight PySCF/ASE workflow for geometry optimization and analysis. Conda-only distribution; pip install is unsupported."
 readme = "README.md"
@@ -14,6 +14,7 @@ dependencies = ["pydantic>=2.0", "PyYAML>=6.0"]
 dev = ["mypy", "pytest", "pytest-cov", "ruff", "types-PyYAML"]
 
 [project.scripts]
+pyscf_auto = "run_opt:main"
 dftflow = "run_opt:main"
 
 [tool.setuptools]
@@ -21,6 +22,7 @@ package-dir = {"" = "src"}
 py-modules = [
     "ase_backend",
     "cli",
+    "env_compat",
     "qcschema_export",
     "run_queue",
     "run_opt",

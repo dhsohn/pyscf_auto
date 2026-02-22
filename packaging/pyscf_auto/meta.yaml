@@ -1,4 +1,4 @@
-{% set name = "dftflow" %}
+{% set name = "pyscf_auto" %}
 {% set version = "0.1.0" %}
 
 package:
@@ -40,11 +40,11 @@ test:
     - pyscf
     - pyscf.solvent.smd
   commands:
-    - dftflow --help
+    - pyscf_auto --help
 
 about:
-  home: https://github.com/dhsohn/DFTFlow
-  summary: DFTFlow CLI for PySCF/ASE workflows with SMD-enabled PySCF.
+  home: https://github.com/dhsohn/pyscf_auto
+  summary: pyscf_auto CLI for PySCF/ASE workflows with SMD-enabled PySCF.
   license: MIT
 
 extra:

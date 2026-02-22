@@ -269,7 +269,7 @@ def build_parser():
     )
     list_runs_parser.add_argument(
         "--runs-dir",
-        help="Optional runs directory override (defaults to DFTFLOW_BASE_DIR/runs).",
+        help="Optional runs directory override (defaults to PYSCF_AUTO_BASE_DIR/runs).",
     )
 
     queue_parser = subparsers.add_parser(

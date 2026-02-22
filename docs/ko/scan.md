@@ -26,7 +26,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  A[dftflow scan-point] --> B[read scan_manifest.json]
+  A[pyscf_auto scan-point] --> B[read scan_manifest.json]
   B --> C[select point by --index]
   C --> D[_run_scan_point]
   D --> E[apply geometry + write input_xyz]
@@ -63,8 +63,8 @@ scan:
 {
   "schema_version": 1,
   "generated_at": "2026-01-03T10:01:04",
-  "run_dir": "/Users/you/DFTFlow/runs/2026-01-03_100104/0147_scan",
-  "scan_dir": "/Users/you/DFTFlow/runs/2026-01-03_100104/0147_scan/scan",
+  "run_dir": "/Users/you/pyscf_auto/runs/2026-01-03_100104/0147_scan",
+  "scan_dir": "/Users/you/pyscf_auto/runs/2026-01-03_100104/0147_scan/scan",
   "xyz_file": "/Users/you/work/input.xyz",
   "scan_mode": "single_point",
   "dimensions": [
@@ -108,7 +108,7 @@ scan:
     }
   ],
   "command_template": [
-    "dftflow",
+    "pyscf_auto",
     "scan-point",
     "--manifest",
     "/Users/you/.../scan_manifest.json",
@@ -121,4 +121,4 @@ scan:
 ## 실행 팁
 
 - `manifest` 모드는 매니페스트만 생성하고 종료합니다.
-- 분산 환경에서 `dftflow scan-point --manifest <path> --index <N>`으로 개별 포인트를 실행합니다.
+- 분산 환경에서 `pyscf_auto scan-point --manifest <path> --index <N>`으로 개별 포인트를 실행합니다.

@@ -5,6 +5,7 @@ import re
 import time
 from functools import lru_cache
 
+from env_compat import getenv_with_legacy
 from run_opt_config import (
     DEFAULT_CHARGE,
     DEFAULT_MULTIPLICITY,
@@ -403,7 +404,8 @@ def apply_scf_checkpoint(mf, scf_config, run_dir=None):
 
 
 def _scf_retry_enabled():
-    value = os.environ.get("DFTFLOW_SCF_RETRY", "1").strip().lower()
+    value = getenv_with_legacy("PYSCF_AUTO_SCF_RETRY", "DFTFLOW_SCF_RETRY", "1")
+    value = value.strip().lower()
     return value not in ("0", "false", "no", "off")
 
 
@@ -638,7 +640,7 @@ def apply_solvent_model(
         if not _smd_available(mf):
             raise ValueError(
                 "SMD solvent model is unavailable in this PySCF build. "
-                "Install the SMD-enabled PySCF package from the DFTFlow conda channel."
+                "Install the SMD-enabled PySCF package from the pyscf_auto conda channel."
             )
         supported = _supported_smd_solvents()
         supported_map = _cached_smd_supported_map()

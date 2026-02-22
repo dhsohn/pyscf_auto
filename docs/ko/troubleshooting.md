@@ -11,14 +11,14 @@ conda install -c daehyupsohn -c conda-forge pyscf
 
 ## SCF 수렴 실패
 
-- DFTFlow는 기본적으로 level shift/damping 재시도를 수행합니다.
-- 재시도를 끄려면 환경 변수 `DFTFLOW_SCF_RETRY=0`를 사용하세요.
+- pyscf_auto는 기본적으로 level shift/damping 재시도를 수행합니다.
+- 재시도를 끄려면 환경 변수 `PYSCF_AUTO_SCF_RETRY=0`를 사용하세요.
 
 ## 큐가 멈춘 것처럼 보일 때
 
-- 큐 상태 확인: `dftflow queue status`
-- 러너 로그 확인: `~/DFTFlow/log/queue_runner.log`
-- 실패 건 재큐: `dftflow queue requeue-failed`
+- 큐 상태 확인: `pyscf_auto queue status`
+- 러너 로그 확인: `~/pyscf_auto/log/queue_runner.log`
+- 실패 건 재큐: `pyscf_auto queue requeue-failed`
 
 ## 메모리/스레드
 
@@ -28,5 +28,5 @@ conda install -c daehyupsohn -c conda-forge pyscf
 ## 진단
 
 ```bash
-dftflow doctor
+pyscf_auto doctor
 ```

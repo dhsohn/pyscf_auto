@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to DFTFlow will be documented in this file.
+All notable changes to pyscf_auto will be documented in this file.
 
 Format follows Keep a Changelog, and versioning follows SemVer with a beta
 stability note (APIs and workflows may change before 1.0).

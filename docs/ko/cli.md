@@ -3,7 +3,7 @@
 ## run
 
 ```bash
-dftflow run input.xyz --config run_config.yaml
+pyscf_auto run input.xyz --config run_config.yaml
 ```
 
 주요 옵션:
@@ -19,38 +19,38 @@ dftflow run input.xyz --config run_config.yaml
 ## status
 
 ```bash
-dftflow status
+pyscf_auto status
 
-dftflow status --recent 5
+pyscf_auto status --recent 5
 ```
 
 ## queue
 
 ```bash
-dftflow queue status
-dftflow queue cancel <RUN_ID>
-dftflow queue retry <RUN_ID>
-dftflow queue requeue-failed
-dftflow queue prune --keep-days 30
-dftflow queue archive
+pyscf_auto queue status
+pyscf_auto queue cancel <RUN_ID>
+pyscf_auto queue retry <RUN_ID>
+pyscf_auto queue requeue-failed
+pyscf_auto queue prune --keep-days 30
+pyscf_auto queue archive
 ```
 
 ## validate-config
 
 ```bash
-dftflow validate-config run_config.yaml
+pyscf_auto validate-config run_config.yaml
 ```
 
 ## doctor
 
 ```bash
-dftflow doctor
+pyscf_auto doctor
 ```
 
 ## smoke-test
 
 ```bash
-dftflow smoke-test --smoke-mode quick
+pyscf_auto smoke-test --smoke-mode quick
 ```
 
 ## scan-point (고급)
@@ -58,5 +58,5 @@ dftflow smoke-test --smoke-mode quick
 `scan.executor: manifest`로 생성된 매니페스트를 사용해 포인트를 실행합니다.
 
 ```bash
-dftflow scan-point --manifest path/to/scan_manifest.json --index 0
+pyscf_auto scan-point --manifest path/to/scan_manifest.json --index 0
 ```

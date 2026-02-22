@@ -1,4 +1,4 @@
-"""CLI entrypoint module for DFTFlow."""
+"""CLI entrypoint module for pyscf_auto."""
 
 __all__ = ["main"]
 
@@ -20,6 +20,7 @@ import cli
 import run_queue
 import run_opt_smoke
 import workflow
+from env_compat import getenv_with_legacy
 from run_opt_config import (
     DEFAULT_QUEUE_LOCK_PATH,
     DEFAULT_QUEUE_PATH,
@@ -39,7 +40,7 @@ from run_opt_utils import normalize_solvent_key as _normalize_solvent_key
 TERMINAL_RESUME_STATUSES = {"completed", "failed", "timeout", "canceled"}
 
 SMOKE_TEST_XYZ = """3
-DFTFlow smoke-test water molecule. charge=0 spin=0
+pyscf_auto smoke-test water molecule. charge=0 spin=0
 O     -0.1659811139    2.0308399200   -0.0000031757
 H     -2.5444712639    1.0182403326    0.6584512591
 H     -1.0147968531    2.4412472248   -2.0058431625
@@ -582,7 +583,8 @@ def _run_smoke_test_case(
     smoke_config_raw,
     smoke_config,
 ):
-    skip_capability_check = "DFTFLOW_SKIP_CAPABILITY_CHECK"
+    skip_capability_check = "PYSCF_AUTO_SKIP_CAPABILITY_CHECK"
+    legacy_skip_capability_check = "DFTFLOW_SKIP_CAPABILITY_CHECK"
     run_args = argparse.Namespace(
         xyz_file=str(xyz_path),
         solvent_map=solvent_map_path,
@@ -604,7 +606,9 @@ def _run_smoke_test_case(
     )
     if args.no_isolate:
         previous_skip = os.environ.get(skip_capability_check)
+        previous_legacy_skip = os.environ.get(legacy_skip_capability_check)
         os.environ[skip_capability_check] = "1"
+        os.environ[legacy_skip_capability_check] = "1"
         config = build_run_config(smoke_config)
         try:
             workflow.run(
@@ -619,20 +623,28 @@ def _run_smoke_test_case(
                 os.environ.pop(skip_capability_check, None)
             else:
                 os.environ[skip_capability_check] = previous_skip
+            if previous_legacy_skip is None:
+                os.environ.pop(legacy_skip_capability_check, None)
+            else:
+                os.environ[legacy_skip_capability_check] = previous_legacy_skip
         return 0
     env = os.environ.copy()
     env[skip_capability_check] = "1"
+    env[legacy_skip_capability_check] = "1"
     env["PYTHONFAULTHANDLER"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
     stderr_path = Path(run_dir) / "smoke_subprocess.err"
     stdout_path = Path(run_dir) / "smoke_subprocess.out"
-    env["DFTFLOW_SMOKE_STATUS_PATH"] = str(
+    env["PYSCF_AUTO_SMOKE_STATUS_PATH"] = str(
         Path(run_dir) / "smoke_subprocess.status"
     )
-    env["DFTFLOW_SMOKE_HEARTBEAT_PATH"] = str(
+    env["DFTFLOW_SMOKE_STATUS_PATH"] = env["PYSCF_AUTO_SMOKE_STATUS_PATH"]
+    env["PYSCF_AUTO_SMOKE_HEARTBEAT_PATH"] = str(
         Path(run_dir) / SMOKE_TEST_HEARTBEAT_FILE
     )
-    env["DFTFLOW_SMOKE_HEARTBEAT_INTERVAL"] = str(SMOKE_TEST_HEARTBEAT_INTERVAL)
+    env["DFTFLOW_SMOKE_HEARTBEAT_PATH"] = env["PYSCF_AUTO_SMOKE_HEARTBEAT_PATH"]
+    env["PYSCF_AUTO_SMOKE_HEARTBEAT_INTERVAL"] = str(SMOKE_TEST_HEARTBEAT_INTERVAL)
+    env["DFTFLOW_SMOKE_HEARTBEAT_INTERVAL"] = env["PYSCF_AUTO_SMOKE_HEARTBEAT_INTERVAL"]
     src_dir = str(Path(__file__).resolve().parent)
     existing_pythonpath = env.get("PYTHONPATH")
     if existing_pythonpath:
@@ -1238,9 +1250,18 @@ def _apply_resume_status_guard(args, config):
 def _run_workflow_with_smoke_signals(
     args, config, config_raw, config_source_path, run_in_background
 ):
-    smoke_status_path = os.environ.get("DFTFLOW_SMOKE_STATUS_PATH")
-    smoke_heartbeat_path = os.environ.get("DFTFLOW_SMOKE_HEARTBEAT_PATH")
-    heartbeat_interval = os.environ.get("DFTFLOW_SMOKE_HEARTBEAT_INTERVAL")
+    smoke_status_path = getenv_with_legacy(
+        "PYSCF_AUTO_SMOKE_STATUS_PATH",
+        "DFTFLOW_SMOKE_STATUS_PATH",
+    )
+    smoke_heartbeat_path = getenv_with_legacy(
+        "PYSCF_AUTO_SMOKE_HEARTBEAT_PATH",
+        "DFTFLOW_SMOKE_HEARTBEAT_PATH",
+    )
+    heartbeat_interval = getenv_with_legacy(
+        "PYSCF_AUTO_SMOKE_HEARTBEAT_INTERVAL",
+        "DFTFLOW_SMOKE_HEARTBEAT_INTERVAL",
+    )
     exit_code = 1
     stop_heartbeat = None
     if smoke_heartbeat_path:

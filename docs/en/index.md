@@ -1,14 +1,14 @@
-# DFTFlow User Manual (English)
+# pyscf_auto User Manual (English)
 
-DFTFlow is a local workflow tool built on PySCF and ASE. It runs optimization, single-point, frequency, IRC, and scans with consistent logging and metadata.
+pyscf_auto is a local workflow tool built on PySCF and ASE. It runs optimization, single-point, frequency, IRC, and scans with consistent logging and metadata.
 
 ## Quick Start
 
 ```bash
-conda create -n dftflow -c daehyupsohn -c conda-forge dftflow
-conda activate dftflow
+conda create -n pyscf_auto -c daehyupsohn -c conda-forge pyscf_auto
+conda activate pyscf_auto
 
-dftflow run path/to/input.xyz --config run_config.yaml
+pyscf_auto run path/to/input.xyz --config run_config.yaml
 ```
 
 ## What This Manual Covers
@@ -21,8 +21,8 @@ dftflow run path/to/input.xyz --config run_config.yaml
 
 ## Default Paths
 
-- Default run directory: `~/DFTFlow/runs/YYYY-MM-DD_HHMMSS/`
-- Override with the `DFTFLOW_BASE_DIR` environment variable.
+- Default run directory: `~/pyscf_auto/runs/YYYY-MM-DD_HHMMSS/`
+- Override with the `PYSCF_AUTO_BASE_DIR` environment variable.
 
 ## Next Reads
 

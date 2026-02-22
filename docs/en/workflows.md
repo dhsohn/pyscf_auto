@@ -12,7 +12,7 @@
 
 ```mermaid
 flowchart TD
-  A[CLI: dftflow run] --> B[load config + build run context]
+  A[CLI: pyscf_auto run] --> B[load config + build run context]
   B --> C{background?}
   C -->|yes| D[enqueue background run]
   C -->|no| E[setup logging + metadata]

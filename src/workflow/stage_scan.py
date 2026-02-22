@@ -465,7 +465,7 @@ def _write_scan_manifest(
         "settings": settings,
         "points": points,
         "command_template": [
-            "dftflow",
+            "pyscf_auto",
             "scan-point",
             "--manifest",
             manifest_path,

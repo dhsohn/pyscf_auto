@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible bug in DFTFlow
+description: Report a reproducible bug in pyscf_auto
 labels: ["type:bug"]
 body:
   - type: textarea

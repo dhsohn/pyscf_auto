@@ -3,6 +3,7 @@ import os
 import uuid
 from datetime import datetime
 
+from env_compat import env_truthy
 from run_opt_config import (
     DEFAULT_CONFIG_USED_PATH,
     DEFAULT_EVENT_LOG_PATH,
@@ -47,12 +48,6 @@ from .utils import (
 
 
 def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
-    def _env_truthy(name: str) -> bool:
-        value = os.environ.get(name)
-        if value is None:
-            return False
-        return value.strip().lower() in ("1", "true", "yes", "on")
-
     config_dict = config.to_dict()
     calculation_mode = _normalize_calculation_mode(config.calculation_mode)
     basis = config.basis
@@ -135,8 +130,9 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
         else "all"
     )
     snapshot_mode = str(snapshot_mode).lower()
-    profiling_enabled = bool(getattr(args, "profile", False)) or _env_truthy(
-        "DFTFLOW_PROFILE"
+    profiling_enabled = bool(getattr(args, "profile", False)) or env_truthy(
+        "PYSCF_AUTO_PROFILE",
+        "DFTFLOW_PROFILE",
     )
     resume_dir = getattr(args, "resume", None)
     run_dir = args.run_dir or resume_dir or create_run_directory()

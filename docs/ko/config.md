@@ -1,6 +1,6 @@
 # 설정 파일
 
-DFTFlow 설정 파일은 `.json`, `.yaml/.yml`, `.toml`을 지원합니다.
+pyscf_auto 설정 파일은 `.json`, `.yaml/.yml`, `.toml`을 지원합니다.
 
 ## 핵심 필드
 
@@ -59,5 +59,5 @@ scan:
 ## 유효성 검사
 
 ```bash
-dftflow validate-config run_config.yaml
+pyscf_auto validate-config run_config.yaml
 ```

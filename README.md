@@ -1,27 +1,27 @@
-# DFTFlow
+# pyscf_auto
 
 **Status: Beta**
 
-DFTFlow is a lightweight workflow wrapper around PySCF (SCF/DFT/gradients/Hessians)
+pyscf_auto is a lightweight workflow wrapper around PySCF (SCF/DFT/gradients/Hessians)
 and ASE (optimization driver). It runs geometry optimization (min/TS), single-point
 energy, frequency, IRC, and scans with consistent logging and reproducible metadata.
 
-- CLI entry point: `dftflow`
+- CLI entry point: `pyscf_auto`
 - Default config template: `run_config.json`
-- Runs are stored under `~/DFTFlow/runs/YYYY-MM-DD_HHMMSS/` (override with `DFTFLOW_BASE_DIR`)
+- Runs are stored under `~/pyscf_auto/runs/YYYY-MM-DD_HHMMSS/` (override with `PYSCF_AUTO_BASE_DIR`)
 
 ## Documentation
 
-- GitHub Pages manual (KR/EN): https://dhsohn.github.io/DFTFlow/
+- GitHub Pages manual (KR/EN): https://dhsohn.github.io/pyscf_auto/
 - Source docs: `docs/`
 
 ## Quickstart
 
 ```bash
-conda create -n dftflow -c daehyupsohn -c conda-forge dftflow
-conda activate dftflow
+conda create -n pyscf_auto -c daehyupsohn -c conda-forge pyscf_auto
+conda activate pyscf_auto
 
-dftflow run path/to/input.xyz --config run_config.yaml
+pyscf_auto run path/to/input.xyz --config run_config.yaml
 ```
 
 ## Development Quality Checks
@@ -41,6 +41,6 @@ GUI:
 
 ## Scope
 
-DFTFlow is a PySCF/ASE-centered local workflow tool for workstation runs. It is
+pyscf_auto is a PySCF/ASE-centered local workflow tool for workstation runs. It is
 not a general-purpose distributed workflow engine; background queueing is local
 to the machine where runs are submitted.
