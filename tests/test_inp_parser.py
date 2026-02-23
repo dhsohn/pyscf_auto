@@ -10,8 +10,8 @@ import pytest
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from inp.route_line import RouteLineResult, parse_route_line
-from inp.geometry import GeometryResult, parse_geometry_block
+from inp.route_line import parse_route_line
+from inp.geometry import parse_geometry_block
 from inp.parser import InpConfig, parse_inp_file, inp_config_to_dict, inp_config_to_xyz_content
 
 

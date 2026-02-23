@@ -2,6 +2,9 @@ pytest.ini
 
 .DS_Store
 __pycache__/
+build/
+dist/
+*.egg-info/
 .conda-bld/
 runs/
 tests/__pycache__/

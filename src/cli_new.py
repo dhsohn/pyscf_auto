@@ -15,7 +15,6 @@ import argparse
 import json
 import logging
 import sys
-from pathlib import Path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -277,7 +276,7 @@ def _cmd_doctor() -> None:
 
 
 def _cmd_validate(args: argparse.Namespace) -> None:
-    from inp.parser import InpConfig, inp_config_to_dict, parse_inp_file
+    from inp.parser import inp_config_to_dict, parse_inp_file
     from run_opt_config import build_run_config
 
     try:
@@ -303,7 +302,7 @@ def _cmd_validate(args: argparse.Namespace) -> None:
     # Test conversion to RunConfig
     config_dict = inp_config_to_dict(inp)
     try:
-        run_config = build_run_config(config_dict)
+        build_run_config(config_dict)
         print("\nRunConfig validation: PASSED")
     except ValueError as exc:
         print(f"\nRunConfig validation FAILED: {exc}", file=sys.stderr)

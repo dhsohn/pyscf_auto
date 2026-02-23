@@ -26,11 +26,11 @@ def acquire_run_lock(reaction_dir: str) -> Generator[None, None, None]:
         lock_fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY)
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
+        except OSError as exc:
             raise RuntimeError(
                 f"Another run is active in {reaction_dir}. "
                 f"Remove {lock_path} if this is incorrect."
-            )
+            ) from exc
         # Write PID for debugging
         os.write(lock_fd, f"{os.getpid()}\n".encode())
         os.fsync(lock_fd)

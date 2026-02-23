@@ -5,13 +5,12 @@ from __future__ import annotations
 import glob
 import logging
 import os
-import sys
 import time
 from pathlib import Path
 from typing import Any
 
 from app_config import AppConfig, load_app_config
-from inp.parser import InpConfig, parse_inp_file
+from inp.parser import parse_inp_file
 from notifier.events import (
     EVT_RUN_COMPLETED,
     EVT_RUN_FAILED,

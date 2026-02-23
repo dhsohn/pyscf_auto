@@ -41,6 +41,9 @@ py-modules = [
 where = ["src"]
 include = ["workflow", "inp", "runner", "notifier", "organizer"]
 
+[tool.ruff]
+extend-exclude = ["build"]
+
 [tool.ruff.lint]
 select = ["E", "F", "B"]
 ignore = ["E501"]

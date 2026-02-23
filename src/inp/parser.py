@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .route_line import RouteLineResult, parse_route_line
-from .geometry import GeometryResult, parse_geometry_block
+from .geometry import parse_geometry_block
 
 
 @dataclass
