@@ -29,8 +29,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install MkDocs
-        run: pip install mkdocs
+      - name: Install MkDocs Material
+        run: pip install mkdocs-material
       - name: Build site
         run: mkdocs build --site-dir site
       - name: Upload Pages artifact

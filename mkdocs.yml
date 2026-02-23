@@ -1,8 +1,46 @@
-site_name: pyscf_auto User Manual
-site_description: pyscf_auto CLI user manual (Korean and English)
+site_name: pyscf_auto
+site_description: PySCF/ASE workflow tool — .inp file based calculations with automatic retry
+site_url: https://dhsohn.github.io/pyscf_auto/
 
 theme:
-  name: mkdocs
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+repo_url: https://github.com/dhsohn/pyscf_auto
+repo_name: dhsohn/pyscf_auto
 
 nav:
   - Home: index.md
@@ -32,11 +70,34 @@ nav:
           - Engine Abstraction: en/design/engine-abstraction.md
 
 markdown_extensions:
-  - fenced_code
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.mark
+  - pymdownx.keys
+  - admonition
   - tables
+  - attr_list
+  - md_in_html
+  - def_list
+  - footnotes
   - toc:
       permalink: true
 
-extra_javascript:
-  - https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js
-  - assets/mermaid-init.js
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/dhsohn/pyscf_auto
+
+extra_css:
+  - assets/extra.css
