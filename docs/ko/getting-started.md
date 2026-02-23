@@ -10,7 +10,6 @@ conda activate pyscf_auto
 ```
 
 - `pip install pyscf_auto`는 지원되지 않습니다.
-- GUI는 별도 앱(`dftflow_gui`)으로 제공됩니다.
 
 ## 환경 점검
 

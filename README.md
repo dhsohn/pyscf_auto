@@ -35,10 +35,6 @@ ruff check src tests
 mypy src
 ```
 
-GUI:
-
-- Desktop GUI is distributed separately (`dftflow_gui`).
-
 ## Scope
 
 pyscf_auto is a PySCF/ASE-centered local workflow tool for workstation runs. It is
