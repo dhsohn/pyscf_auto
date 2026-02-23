@@ -4,7 +4,6 @@ import time
 from datetime import datetime
 
 from env_compat import getenv_with_legacy
-from runner.doctor import run_doctor
 from run_queue import record_status_event, register_foreground_run, update_queue_status
 from run_opt_config import (
     DEFAULT_QUEUE_LOCK_PATH,
@@ -55,7 +54,7 @@ from .utils import (
 )
 
 
-__all__ = ["run", "run_doctor"]
+__all__ = ["run"]
 DEFAULT_ENGINE_ADAPTER = WorkflowEngineAdapter()
 
 

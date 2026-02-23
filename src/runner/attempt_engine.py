@@ -12,6 +12,7 @@ from inp.parser import InpConfig, inp_config_to_dict, inp_config_to_xyz_content
 from run_opt_config import build_run_config
 from .retry_strategies import apply_retry_strategy
 from .state_machine import (
+    decide_attempt_outcome,
     RunState,
     finalize_state,
     record_attempt,
@@ -29,6 +30,7 @@ def run_attempts(
     reaction_dir: str,
     max_retries: int,
     notify_fn: Callable[[dict[str, Any]], None],
+    resumed: bool = False,
 ) -> RunState:
     """Execute the calculation with automatic retry on failure.
 
@@ -45,6 +47,7 @@ def run_attempts(
         reaction_dir: Path to the reaction directory.
         max_retries: Maximum number of retry attempts.
         notify_fn: Callback for sending notification events.
+        resumed: Whether this run is resuming from an in-progress state.
 
     Returns:
         Updated run state after all attempts.
@@ -56,10 +59,67 @@ def run_attempts(
     # Prepare xyz file
     xyz_path = _prepare_xyz_file(inp_config, reaction_dir)
 
-    state = update_status(state, "running")
+    attempts = state.get("attempts")
+    if not isinstance(attempts, list):
+        attempts = []
+        state["attempts"] = attempts
+
+    if resumed and attempts:
+        last_attempt = attempts[-1]
+        if not isinstance(last_attempt, dict):
+            last_attempt = {}
+        retries_used = max(0, len(attempts) - 1)
+        analyzer_status = str(last_attempt.get("analyzer_status", "")).strip()
+        analyzer_reason = str(last_attempt.get("analyzer_reason", "")).strip()
+        decision = decide_attempt_outcome(
+            analyzer_status=analyzer_status,
+            analyzer_reason=analyzer_reason,
+            retries_used=retries_used,
+            max_retries=max_retries,
+        )
+        if decision is not None:
+            logger.info(
+                "Resume detected terminal previous attempt: status=%s, reason=%s",
+                decision.analyzer_status,
+                decision.reason,
+            )
+            state = finalize_state(
+                state,
+                decision.run_status,
+                analyzer_status=decision.analyzer_status,
+                reason=decision.reason,
+                energy=last_attempt.get("energy"),
+                resumed=resumed,
+                extra={"last_attempt_status": decision.analyzer_status},
+            )
+            save_state(reaction_dir, state)
+            return state
+
+    start_attempt = len(attempts) + 1
+    if start_attempt > max_attempts:
+        last_attempt = attempts[-1] if attempts else {}
+        if not isinstance(last_attempt, dict):
+            last_attempt = {}
+        state = finalize_state(
+            state,
+            "failed",
+            analyzer_status=str(last_attempt.get("analyzer_status", "unknown")),
+            reason="retry_limit_reached",
+            energy=last_attempt.get("energy"),
+            resumed=resumed,
+            extra={
+                "last_attempt_status": str(
+                    last_attempt.get("analyzer_status", "unknown"),
+                ),
+            },
+        )
+        save_state(reaction_dir, state)
+        return state
+
+    state = update_status(state, "running" if start_attempt == 1 else "retrying")
     save_state(reaction_dir, state)
 
-    for attempt_num in range(1, max_attempts + 1):
+    for attempt_num in range(start_attempt, max_attempts + 1):
         attempt_dir = os.path.join(reaction_dir, f"attempt_{attempt_num:03d}")
         os.makedirs(attempt_dir, exist_ok=True)
 
@@ -112,6 +172,8 @@ def run_attempts(
                 analyzer_status="completed",
                 reason="normal_termination",
                 energy=attempt_record.get("energy"),
+                resumed=resumed,
+                extra={"last_attempt_status": "completed"},
             )
             save_state(reaction_dir, state)
             return state
@@ -127,6 +189,8 @@ def run_attempts(
                 "failed",
                 analyzer_status=analyzer_status,
                 reason=attempt_record.get("analyzer_reason", "non_recoverable"),
+                resumed=resumed,
+                extra={"last_attempt_status": analyzer_status},
             )
             save_state(reaction_dir, state)
             return state
@@ -144,7 +208,11 @@ def run_attempts(
         state,
         "failed",
         analyzer_status=last_attempt.get("analyzer_status", "unknown"),
-        reason="max_retries_exceeded",
+        reason="retry_limit_reached",
+        resumed=resumed,
+        extra={
+            "last_attempt_status": str(last_attempt.get("analyzer_status", "unknown")),
+        },
     )
     save_state(reaction_dir, state)
     return state

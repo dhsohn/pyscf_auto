@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import glob
+import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,8 @@ from notifier.notifier import Notifier, make_notify_callback
 from .attempt_engine import run_attempts
 from .run_lock import acquire_run_lock
 from .state_machine import (
-    is_completed,
+    finalize_state,
+    load_or_create_state,
     load_state,
     new_state,
     save_state,
@@ -29,6 +32,7 @@ from .state_machine import (
 )
 
 logger = logging.getLogger(__name__)
+RETRY_INP_RE = re.compile(r"\.retry\d+$", re.IGNORECASE)
 
 
 def cmd_run_inp(
@@ -36,8 +40,6 @@ def cmd_run_inp(
     max_retries: int | None = None,
     force: bool = False,
     json_output: bool = False,
-    profile: bool = False,
-    verbose: bool = False,
     app_config: AppConfig | None = None,
 ) -> int:
     """Execute the run-inp command.
@@ -55,8 +57,6 @@ def cmd_run_inp(
         max_retries: Maximum retry attempts (overrides config).
         force: Re-run even if completed result exists.
         json_output: Output progress as JSON.
-        profile: Enable profiling.
-        verbose: Enable verbose logging.
         app_config: Global application configuration.
 
     Returns:
@@ -68,6 +68,14 @@ def cmd_run_inp(
     reaction_dir = str(Path(reaction_dir).expanduser().resolve())
     if not os.path.isdir(reaction_dir):
         logger.error("Reaction directory not found: %s", reaction_dir)
+        return 1
+    allowed_root = str(Path(app_config.runtime.allowed_root).expanduser().resolve())
+    if not _is_subpath(Path(reaction_dir), Path(allowed_root)):
+        logger.error(
+            "Reaction directory must be under allowed_root: %s (got %s)",
+            allowed_root,
+            reaction_dir,
+        )
         return 1
 
     # Find .inp file
@@ -86,40 +94,61 @@ def cmd_run_inp(
     logger.info("Parsed input: %s (%s %s/%s)", inp_path,
                 inp_config.job_type, inp_config.functional, inp_config.basis)
 
-    # Check for existing result
-    existing_state = load_state(reaction_dir)
-    if existing_state and is_completed(existing_state) and not force:
-        status = existing_state.get("status", "unknown")
-        logger.info(
-            "Run already %s (run_id=%s). Use --force to re-run.",
-            status,
-            existing_state.get("run_id", "?"),
-        )
-        return 0 if status == "completed" else 1
-
     # Resolve max retries
     if max_retries is None:
         max_retries = app_config.runtime.default_max_retries
+    max_retries = max(0, int(max_retries))
 
-    # Create run state
-    state = new_state(reaction_dir, str(inp_path), max_retries)
-    save_state(reaction_dir, state)
+    if not force:
+        completed_out = _existing_completed_out(inp_path)
+        if completed_out is not None:
+            state = new_state(reaction_dir, str(inp_path), max_retries)
+            state = finalize_state(
+                state,
+                "completed",
+                analyzer_status="completed",
+                reason="existing_out_completed",
+                resumed=None,
+                extra={
+                    "last_out_path": completed_out["out_path"],
+                    "skipped_execution": True,
+                    "last_attempt_status": "completed",
+                },
+            )
+            save_state(reaction_dir, state)
+            write_report_files(state, reaction_dir)
+            payload = _build_run_payload(reaction_dir, inp_path, state)
+            _emit(payload, as_json=json_output)
+            return 0
 
     # Setup notifier
     notifier = Notifier(app_config.monitoring)
     notifier.start()
     notify_fn = make_notify_callback(notifier)
 
-    # Send run_started event
-    notify_fn(make_event(
-        EVT_RUN_STARTED,
-        state["run_id"],
-        dir=os.path.basename(reaction_dir),
-    ))
-
     exit_code = 1
+    resumed = False
+    state: dict[str, Any] | None = None
     try:
         with acquire_run_lock(reaction_dir):
+            if force:
+                state = new_state(reaction_dir, str(inp_path), max_retries)
+                save_state(reaction_dir, state)
+                resumed = False
+            else:
+                state, resumed = load_or_create_state(
+                    reaction_dir=reaction_dir,
+                    selected_inp=str(inp_path),
+                    max_retries=max_retries,
+                )
+
+            # Send run_started event
+            notify_fn(make_event(
+                EVT_RUN_STARTED,
+                state["run_id"],
+                dir=os.path.basename(reaction_dir),
+            ))
+
             # Start heartbeat
             notifier.start_heartbeat(
                 lambda: {
@@ -146,6 +175,7 @@ def cmd_run_inp(
                 reaction_dir=reaction_dir,
                 max_retries=max_retries,
                 notify_fn=notify_fn,
+                resumed=resumed,
             )
 
             # Determine exit code
@@ -170,29 +200,46 @@ def cmd_run_inp(
         return 1
     except KeyboardInterrupt:
         logger.info("Run interrupted by user.")
-        from .state_machine import finalize_state
 
-        state = finalize_state(state, "interrupted", reason="keyboard_interrupt")
-        save_state(reaction_dir, state)
+        if state is not None:
+            state = finalize_state(state, "interrupted", reason="keyboard_interrupt")
+            save_state(reaction_dir, state)
+            exit_code = 130
+        else:
+            return 130
     finally:
         notifier.stop()
-        write_report_files(state, reaction_dir)
+        if state is not None:
+            write_report_files(state, reaction_dir)
 
-    # Print summary
-    _print_summary(state, json_output)
+    payload = _build_run_payload(reaction_dir, inp_path, state)
+    _emit(payload, as_json=json_output)
     return exit_code
 
 
 def cmd_status(
     reaction_dir: str,
     json_output: bool = False,
+    app_config: AppConfig | None = None,
 ) -> int:
     """Display the status of a run in a reaction directory.
 
     Returns:
         Exit code (0 = found, 1 = not found).
     """
+    if app_config is None:
+        app_config = load_app_config()
+
     reaction_dir = str(Path(reaction_dir).expanduser().resolve())
+    allowed_root = str(Path(app_config.runtime.allowed_root).expanduser().resolve())
+    if not _is_subpath(Path(reaction_dir), Path(allowed_root)):
+        logger.error(
+            "Reaction directory must be under allowed_root: %s (got %s)",
+            allowed_root,
+            reaction_dir,
+        )
+        return 1
+
     state = load_state(reaction_dir)
 
     if state is None:
@@ -200,11 +247,10 @@ def cmd_status(
         return 1
 
     if json_output:
-        import json
-
         print(json.dumps(state, indent=2))
     else:
-        _print_summary(state, json_output=False)
+        payload = _build_status_payload(reaction_dir, state)
+        _emit(payload, as_json=False)
 
     return 0
 
@@ -229,31 +275,91 @@ def _find_inp_file(reaction_dir: str) -> str | None:
     return max(inp_files, key=os.path.getmtime)
 
 
-def _print_summary(state: dict[str, Any], json_output: bool) -> None:
-    """Print a human-readable summary of the run state."""
-    if json_output:
-        import json
+def _existing_completed_out(selected_inp: str) -> dict[str, str] | None:
+    selected_path = Path(selected_inp)
+    base_stem = RETRY_INP_RE.sub("", selected_path.stem) or selected_path.stem
 
-        print(json.dumps(state, indent=2))
+    out_candidates = list(selected_path.parent.glob(f"{base_stem}.out"))
+    out_candidates.extend(selected_path.parent.glob(f"{base_stem}.retry*.out"))
+    out_candidates.sort(key=lambda p: (p.stat().st_mtime_ns, p.name.lower()), reverse=True)
+
+    seen: set[Path] = set()
+    for out_path in out_candidates:
+        resolved = out_path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if not _looks_like_completed_out(out_path):
+            continue
+        return {"out_path": str(out_path)}
+    return None
+
+
+def _looks_like_completed_out(out_path: Path) -> bool:
+    try:
+        text = out_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return "normal termination" in text.lower()
+
+
+def _is_subpath(path: Path, root: Path) -> bool:
+    """Return True if path is root itself or located under root."""
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _emit(payload: dict[str, Any], as_json: bool) -> None:
+    """Emit command result payload in text or JSON."""
+    if as_json:
+        print(json.dumps(payload, ensure_ascii=True, indent=2))
         return
 
-    run_id = state.get("run_id", "?")
-    status = state.get("status", "unknown")
-    attempts = state.get("attempts", [])
+    for key in [
+        "status",
+        "reaction_dir",
+        "selected_inp",
+        "attempt_count",
+        "reason",
+        "run_state",
+        "report_json",
+        "report_md",
+    ]:
+        if key in payload:
+            print(f"{key}: {payload[key]}")
+
+
+def _build_status_payload(
+    reaction_dir: str,
+    state: dict[str, Any],
+) -> dict[str, Any]:
     final = state.get("final_result")
+    if not isinstance(final, dict):
+        final = {}
+    attempts = state.get("attempts")
+    if not isinstance(attempts, list):
+        attempts = []
 
-    print(f"\nRun: {run_id}")
-    print(f"Status: {status}")
-    print(f"Attempts: {len(attempts)}")
+    return {
+        "status": state.get("status", ""),
+        "reaction_dir": reaction_dir,
+        "selected_inp": state.get("selected_inp", ""),
+        "attempt_count": len(attempts),
+        "reason": final.get("reason", ""),
+        "run_state": os.path.join(reaction_dir, "run_state.json"),
+    }
 
-    if attempts:
-        last = attempts[-1]
-        print(f"Last attempt: {last.get('analyzer_status', '?')} "
-              f"({last.get('analyzer_reason', '')})")
 
-    if final:
-        print(f"Final: {final.get('status', '?')} - {final.get('reason', '')}")
-        if final.get("energy") is not None:
-            print(f"Energy: {final['energy']:.8f}")
-
-    print()
+def _build_run_payload(
+    reaction_dir: str,
+    selected_inp: str,
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    payload = _build_status_payload(reaction_dir, state)
+    payload["selected_inp"] = state.get("selected_inp", selected_inp)
+    payload["report_json"] = os.path.join(reaction_dir, "run_report.json")
+    payload["report_md"] = os.path.join(reaction_dir, "run_report.md")
+    return payload

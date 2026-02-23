@@ -28,6 +28,8 @@ class RunFinalResult(TypedDict, total=False):
     reason: str
     completed_at: str
     energy: float | None
+    resumed: bool
+    last_attempt_status: str
 
 
 class RunState(TypedDict, total=False):

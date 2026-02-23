@@ -1040,10 +1040,6 @@ def _build_run_config_or_raise(config):
         raise
 
 
-def _run_doctor_command(_args):
-    execution.run_doctor()
-
-
 def _run_scan_point_command(args):
     from execution.stage_scan import run_scan_point_from_manifest
 
@@ -1162,7 +1158,6 @@ def _run_smoke_test_command(args):
 
 def _dispatch_non_run_command(args):
     handlers = {
-        "doctor": _run_doctor_command,
         "scan-point": _run_scan_point_command,
         "queue": _run_queue_command,
         "status": _run_status_command,
@@ -1323,17 +1318,12 @@ def _run_command(args):
     )
 
 
-def main():
+def main() -> int:
     """Main function — redirects to the new .inp-based CLI."""
     from cli_new import main as new_main
-    new_main()
+
+    return int(new_main())
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as error:
-        message = str(error)
-        if message:
-            print(message, file=sys.stderr)
-        sys.exit(1)
+    raise SystemExit(main())

@@ -28,5 +28,5 @@ conda install -c daehyupsohn -c conda-forge pyscf
 ## Diagnostics
 
 ```bash
-pyscf_auto doctor
+./scripts/preflight_check.sh
 ```

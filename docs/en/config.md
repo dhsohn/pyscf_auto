@@ -38,7 +38,7 @@ H 0.0 1.0 0.0
 Validate input without running:
 
 ```bash
-pyscf_auto validate path/to/input.inp
+./scripts/validate_inp.py path/to/input.inp
 ```
 
 ## 2) App Runtime Config (`config.yaml`)

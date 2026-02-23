@@ -14,7 +14,7 @@ conda activate pyscf_auto
 ## Environment Check
 
 ```bash
-pyscf_auto doctor
+./scripts/preflight_check.sh
 ```
 
 ## App Configuration

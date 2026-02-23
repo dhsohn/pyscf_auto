@@ -1,27 +1,34 @@
 """CLI for pyscf_auto with .inp file-based runs.
 
-Usage::
-
-    pyscf_auto run-inp --reaction-dir ~/pyscf_runs/ts_water
-    pyscf_auto status --reaction-dir ~/pyscf_runs/ts_water
-    pyscf_auto organize --root ~/pyscf_runs --apply
-    pyscf_auto doctor
-    pyscf_auto validate input.inp
+User-facing command surface is intentionally aligned with orca_auto:
+- run-inp
+- status
+- organize
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
+from typing import Any
+from pathlib import Path
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="pyscf_auto",
-        description="PySCF calculation runner with .inp file input.",
+    parser = argparse.ArgumentParser(prog="pyscf_auto")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to pyscf_auto.yaml",
     )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable debug logging.",
+    )
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # --- run-inp ---
@@ -32,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--reaction-dir",
         required=True,
-        help="Directory containing the .inp file and geometry.",
+        help="Directory under the configured allowed_root containing input files",
     )
     run_parser.add_argument(
         "--max-retries",
@@ -43,28 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--force",
         action="store_true",
-        help="Re-run even if a completed result exists.",
+        help="Force re-run even if existing output is completed",
     )
     run_parser.add_argument(
         "--json",
         action="store_true",
-        dest="json_output",
         help="Output progress as JSON.",
-    )
-    run_parser.add_argument(
-        "--profile",
-        action="store_true",
-        help="Enable SCF/gradient timing profiling.",
-    )
-    run_parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable debug logging.",
-    )
-    run_parser.add_argument(
-        "--config",
-        default=None,
-        help="Path to app config YAML (default: ~/.pyscf_auto/config.yaml).",
     )
 
     # --- status ---
@@ -75,12 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument(
         "--reaction-dir",
         required=True,
-        help="Reaction directory to check.",
+        help="Directory under the configured allowed_root",
     )
     status_parser.add_argument(
         "--json",
         action="store_true",
-        dest="json_output",
         help="Output as JSON.",
     )
 
@@ -89,99 +79,89 @@ def build_parser() -> argparse.ArgumentParser:
         "organize",
         help="Organize completed runs into a clean directory structure.",
     )
-    org_group = organize_parser.add_mutually_exclusive_group()
-    org_group.add_argument(
+    organize_parser.add_argument(
         "--reaction-dir",
-        help="Organize a single reaction directory.",
+        default=None,
+        help="Single reaction directory to organize",
     )
-    org_group.add_argument(
+    organize_parser.add_argument(
         "--root",
-        help="Organize all reaction directories under this root.",
+        default=None,
+        help="Root directory to scan (mutually exclusive with --reaction-dir)",
     )
     organize_parser.add_argument(
         "--apply",
         action="store_true",
-        help="Actually copy files (default is dry-run preview).",
+        default=False,
+        help="Actually move files (default is dry-run)",
+    )
+    organize_parser.add_argument(
+        "--rebuild-index",
+        action="store_true",
+        default=False,
+        help="Rebuild JSONL index from organized directories.",
     )
     organize_parser.add_argument(
         "--find",
-        dest="find_query",
-        help="Search organized outputs by run_id.",
+        action="store_true",
+        default=False,
+        help="Search the index",
+    )
+    organize_parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Find by run_id (with --find)",
     )
     organize_parser.add_argument(
         "--job-type",
-        help="Filter search by job type.",
+        default=None,
+        help="Filter by job_type (with --find)",
     )
     organize_parser.add_argument(
         "--limit",
         type=int,
-        help="Maximum search results.",
+        default=0,
+        help="Limit results (with --find)",
     )
     organize_parser.add_argument(
         "--json",
         action="store_true",
-        dest="json_output",
         help="Output as JSON.",
-    )
-    organize_parser.add_argument(
-        "--config",
-        default=None,
-        help="Path to app config YAML.",
-    )
-
-    # --- doctor ---
-    subparsers.add_parser(
-        "doctor",
-        help="Run environment diagnostics.",
-    )
-
-    # --- validate ---
-    validate_parser = subparsers.add_parser(
-        "validate",
-        help="Validate a .inp file without running.",
-    )
-    validate_parser.add_argument(
-        "inp_file",
-        help="Path to the .inp file to validate.",
     )
 
     return parser
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    # Setup logging
-    level = logging.DEBUG if getattr(args, "verbose", False) else logging.INFO
+    log_level = logging.DEBUG if getattr(args, "verbose", False) else logging.INFO
     logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        level=log_level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        stream=sys.stderr,
     )
 
     try:
-        if args.command == "run-inp":
-            _cmd_run_inp(args)
-        elif args.command == "status":
-            _cmd_status(args)
-        elif args.command == "organize":
-            _cmd_organize(args)
-        elif args.command == "doctor":
-            _cmd_doctor()
-        elif args.command == "validate":
-            _cmd_validate(args)
-        else:
+        command_map = {
+            "run-inp": _cmd_run_inp,
+            "status": _cmd_status,
+            "organize": _cmd_organize,
+        }
+        handler = command_map.get(args.command)
+        if handler is None:
             parser.print_help()
-            sys.exit(1)
+            return 1
+        return int(handler(args))
     except KeyboardInterrupt:
-        sys.exit(130)
+        return 130
     except Exception as exc:
         logging.error("%s", exc)
-        sys.exit(1)
+        return 1
 
 
-def _cmd_run_inp(args: argparse.Namespace) -> None:
+def _cmd_run_inp(args: argparse.Namespace) -> int:
     from app_config import load_app_config
     from runner.orchestrator import cmd_run_inp
 
@@ -190,126 +170,214 @@ def _cmd_run_inp(args: argparse.Namespace) -> None:
         reaction_dir=args.reaction_dir,
         max_retries=args.max_retries,
         force=args.force,
-        json_output=args.json_output,
-        profile=args.profile,
-        verbose=args.verbose,
+        json_output=args.json,
         app_config=app_config,
     )
-    sys.exit(exit_code)
+    return int(exit_code)
 
 
-def _cmd_status(args: argparse.Namespace) -> None:
+def _cmd_status(args: argparse.Namespace) -> int:
+    from app_config import load_app_config
     from runner.orchestrator import cmd_status
 
+    app_config = load_app_config(getattr(args, "config", None))
     exit_code = cmd_status(
         reaction_dir=args.reaction_dir,
-        json_output=args.json_output,
+        json_output=args.json,
+        app_config=app_config,
     )
-    sys.exit(exit_code)
+    return int(exit_code)
 
 
-def _cmd_organize(args: argparse.Namespace) -> None:
+def _cmd_organize(args: argparse.Namespace) -> int:
     from app_config import load_app_config
     from organizer.result_organizer import (
+        apply_plans,
         find_organized_runs,
-        organize_all,
-        organize_run,
+        plan_root_scan,
+        plan_single,
+        rebuild_organized_index,
     )
 
     app_config = load_app_config(getattr(args, "config", None))
-    organized_root = app_config.runtime.organized_root
+    organized_root = _resolve_dir(app_config.runtime.organized_root)
+    allowed_root = _resolve_dir(app_config.runtime.allowed_root)
 
-    # Search mode
-    if args.find_query:
-        results = find_organized_runs(
-            organized_root,
-            run_id=args.find_query,
-            job_type=args.job_type,
-            limit=args.limit,
-        )
-        if args.json_output:
-            print(json.dumps(results, indent=2))
-        else:
-            for r in results:
-                print(f"  {r.get('run_id', '?')} | {r.get('job_type', '?')} | "
-                      f"{r.get('molecule_key', '?')} | {r.get('target', '?')}")
-            print(f"\nFound {len(results)} runs.")
+    if getattr(args, "rebuild_index", False):
+        count = rebuild_organized_index(str(organized_root))
+        payload = {"action": "rebuild_index", "records_count": count}
+        _emit_organize(payload, as_json=args.json)
+        return 0
+
+    if getattr(args, "find", False):
+        run_id = getattr(args, "run_id", None)
+        job_type = getattr(args, "job_type", None)
+        limit = max(0, int(getattr(args, "limit", 0) or 0))
+
+        if run_id:
+            records = find_organized_runs(str(organized_root), run_id=run_id)
+            if not records:
+                logging.error("run_id not found: %s", run_id)
+                return 1
+            _emit_organize(records[0], as_json=args.json)
+            return 0
+        if job_type:
+            records = find_organized_runs(
+                str(organized_root),
+                job_type=job_type,
+                limit=limit,
+            )
+            _emit_organize(
+                {"results": records, "count": len(records)},
+                as_json=args.json,
+            )
+            return 0
+
+        logging.error("--find requires --run-id or --job-type")
+        return 1
+
+    reaction_dir_raw = getattr(args, "reaction_dir", None)
+    root_raw = getattr(args, "root", None)
+
+    if reaction_dir_raw and root_raw:
+        logging.error("--reaction-dir and --root are mutually exclusive")
+        return 1
+    if not reaction_dir_raw and not root_raw:
+        logging.error("Either --reaction-dir or --root is required")
+        return 1
+
+    if reaction_dir_raw:
+        reaction_dir = _validate_reaction_dir(reaction_dir_raw, allowed_root)
+        if reaction_dir is None:
+            return 1
+        plan, skip = plan_single(reaction_dir, organized_root)
+        plans = [plan] if plan is not None else []
+        skips = [skip] if skip is not None else []
+    else:
+        root = _validate_root_scan_dir(root_raw, allowed_root)
+        if root is None:
+            return 1
+        plans, skips = plan_root_scan(root, organized_root)
+
+    if not getattr(args, "apply", False):
+        summary = {
+            "action": "dry_run",
+            "to_organize": len(plans),
+            "skipped": len(skips),
+            "plans": [_plan_to_dict(plan) for plan in plans],
+            "skip_reasons": [
+                {"reaction_dir": skip.reaction_dir, "reason": skip.reason}
+                for skip in skips
+            ],
+        }
+        _emit_organize(summary, as_json=args.json)
+        return 0
+
+    results, failures = apply_plans(plans, organized_root)
+    organized_count = len(
+        [result for result in results if result.get("action") == "moved"],
+    )
+    skipped_count = len(skips) + len(
+        [result for result in results if result.get("action") == "skipped"],
+    )
+    summary = {
+        "action": "apply",
+        "organized": organized_count,
+        "skipped": skipped_count,
+        "failed": len(failures),
+        "failures": failures,
+    }
+    _emit_organize(summary, as_json=args.json)
+    return 1 if failures else 0
+
+
+def _emit_organize(payload: dict[str, Any], *, as_json: bool) -> None:
+    import json
+
+    if as_json:
+        print(json.dumps(payload, ensure_ascii=True, indent=2))
         return
 
-    # Organize mode
-    if args.reaction_dir:
-        result = organize_run(args.reaction_dir, organized_root, apply=args.apply)
-        if result:
-            if args.json_output:
-                print(json.dumps(result, indent=2))
-            else:
-                action = "Organized" if result["applied"] else "Would organize"
-                print(f"{action}: {result['source']} -> {result['target']}")
-    elif args.root:
-        results = organize_all(args.root, organized_root, apply=args.apply)
-        if args.json_output:
-            print(json.dumps(results, indent=2))
-        else:
-            for r in results:
-                action = "Organized" if r["applied"] else "Would organize"
-                print(f"  {action}: {r.get('run_id', '?')} -> {r['target']}")
-            print(f"\nTotal: {len(results)} runs.")
-    else:
-        # Default: organize from allowed_root
-        root = app_config.runtime.allowed_root
-        results = organize_all(root, organized_root, apply=args.apply)
-        if args.json_output:
-            print(json.dumps(results, indent=2))
-        else:
-            for r in results:
-                action = "Organized" if r["applied"] else "Would organize"
-                print(f"  {action}: {r.get('run_id', '?')} -> {r['target']}")
-            print(f"\nTotal: {len(results)} runs.")
-            if not args.apply and results:
-                print("Use --apply to actually copy files.")
+    for key in ["action", "to_organize", "skipped", "organized", "failed", "records_count"]:
+        if key in payload:
+            print(f"{key}: {payload[key]}")
+
+    for plan in payload.get("plans", []):
+        if isinstance(plan, dict):
+            print(f"  {plan['source_dir']} -> {plan['target_rel_path']}")
+
+    for skip in payload.get("skip_reasons", []):
+        if isinstance(skip, dict):
+            print(f"  SKIP {skip['reaction_dir']}: {skip['reason']}")
+
+    for failure in payload.get("failures", []):
+        if isinstance(failure, dict):
+            print(f"  FAIL {failure.get('run_id', '?')}: {failure.get('reason', 'unknown')}")
+
+    for key in ["run_id", "job_type", "molecule_key", "organized_path", "count"]:
+        if key in payload:
+            print(f"{key}: {payload[key]}")
+
+    for result in payload.get("results", []):
+        if isinstance(result, dict):
+            print(f"  {result.get('run_id', '?')}: {result.get('organized_path', '?')}")
 
 
-def _cmd_doctor() -> None:
-    from runner.doctor import run_doctor
+def _plan_to_dict(plan: Any) -> dict[str, Any]:
+    return {
+        "run_id": plan.run_id,
+        "source_dir": str(plan.source_dir),
+        "target_rel_path": plan.target_rel_path,
+        "target_abs_path": str(plan.target_abs_path),
+        "job_type": plan.job_type,
+        "molecule_key": plan.molecule_key,
+    }
 
-    run_doctor()
+
+def _resolve_dir(path_text: str) -> Path:
+    return Path(path_text).expanduser().resolve()
 
 
-def _cmd_validate(args: argparse.Namespace) -> None:
-    from inp.parser import inp_config_to_dict, parse_inp_file
-    from run_opt_config import build_run_config
+def _validate_reaction_dir(
+    reaction_dir_raw: str,
+    allowed_root: Path,
+) -> Path | None:
+    reaction_dir = _resolve_dir(reaction_dir_raw)
+    if not reaction_dir.exists() or not reaction_dir.is_dir():
+        logging.error("Reaction directory not found: %s", reaction_dir)
+        return None
+    if not _is_subpath(reaction_dir, allowed_root):
+        logging.error(
+            "Reaction directory must be under allowed_root: %s (got %s)",
+            allowed_root,
+            reaction_dir,
+        )
+        return None
+    return reaction_dir
 
+
+def _validate_root_scan_dir(root_raw: str, allowed_root: Path) -> Path | None:
+    root = _resolve_dir(root_raw)
+    if not root.exists() or not root.is_dir():
+        logging.error("Root directory not found: %s", root)
+        return None
+    if root != allowed_root:
+        logging.error(
+            "--root must exactly match allowed_root: %s (got %s)",
+            allowed_root,
+            root,
+        )
+        return None
+    return root
+
+
+def _is_subpath(path: Path, root: Path) -> bool:
     try:
-        inp = parse_inp_file(args.inp_file)
-    except (ValueError, FileNotFoundError) as exc:
-        print(f"Validation FAILED: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Job type:    {inp.job_type}")
-    print(f"Functional:  {inp.functional}")
-    print(f"Basis:       {inp.basis}")
-    print(f"Charge:      {inp.charge}")
-    print(f"Mult:        {inp.multiplicity}")
-    print(f"Dispersion:  {inp.dispersion or 'none'}")
-    print(f"Solvent:     {inp.solvent_name or 'vacuum'} ({inp.solvent_model or '-'})")
-    print(f"Opt mode:    {inp.optimizer_mode or '-'}")
-
-    if inp.scf:
-        print(f"SCF:         {inp.scf}")
-    if inp.runtime:
-        print(f"Runtime:     {inp.runtime}")
-
-    # Test conversion to RunConfig
-    config_dict = inp_config_to_dict(inp)
-    try:
-        build_run_config(config_dict)
-        print("\nRunConfig validation: PASSED")
-    except ValueError as exc:
-        print(f"\nRunConfig validation FAILED: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"\nDerived config:\n{json.dumps(config_dict, indent=2)}")
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

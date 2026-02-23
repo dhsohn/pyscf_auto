@@ -38,7 +38,7 @@ H 0.0 1.0 0.0
 실행 없이 입력 유효성만 검사:
 
 ```bash
-pyscf_auto validate path/to/input.inp
+./scripts/validate_inp.py path/to/input.inp
 ```
 
 ## 2) 앱 런타임 설정 (`config.yaml`)

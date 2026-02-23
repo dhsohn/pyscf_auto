@@ -13,9 +13,17 @@ Key options:
 - `--max-retries N`: override retry count
 - `--force`: rerun even if already completed
 - `--json`: print JSON summary
-- `--profile`: enable profiling
-- `--verbose`: debug logging
+
+Global options (placed before the command):
+
+- `--verbose` / `-v`: debug logging
 - `--config PATH`: app config path
+
+Example:
+
+```bash
+pyscf_auto --config ~/.pyscf_auto/config.yaml -v run-inp --reaction-dir ~/pyscf_runs/water_opt
+```
 
 ## status
 
@@ -30,36 +38,38 @@ pyscf_auto status --reaction-dir ~/pyscf_runs/water_opt --json
 
 Preview or apply organization of completed runs.
 
-```bash
-# dry-run all runs under allowed_root
-pyscf_auto organize
+For `organize`, you must provide exactly one of:
 
+- `--reaction-dir DIR`
+- `--root ROOT` (`ROOT` must exactly match `allowed_root`)
+
+```bash
 # organize a single reaction directory
 pyscf_auto organize --reaction-dir ~/pyscf_runs/water_opt --apply
 
-# organize all under a root
+# organize all under allowed_root
 pyscf_auto organize --root ~/pyscf_runs --apply
 ```
 
 Search organized outputs:
 
 ```bash
-pyscf_auto organize --find RUN_ID
-pyscf_auto organize --find RUN_ID --job-type opt --limit 20 --json
+pyscf_auto organize --find --run-id run_20260223_120000_01234567
+pyscf_auto organize --find --job-type single_point --limit 20 --json
 ```
 
-## doctor
-
-Run dependency/runtime diagnostics.
+Rebuild index:
 
 ```bash
-pyscf_auto doctor
+pyscf_auto organize --rebuild-index --json
 ```
 
-## validate
+## Utility Scripts
 
-Validate a `.inp` file without running a job.
+Diagnostics and validation are provided as scripts:
 
 ```bash
-pyscf_auto validate input/water_opt.inp
+./scripts/preflight_check.sh
+./scripts/validate_inp.py input/water_opt.inp
+./scripts/validate_runtime_config.py --config ~/.pyscf_auto/config.yaml
 ```
