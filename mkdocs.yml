@@ -1,5 +1,5 @@
 site_name: pyscf_auto
-site_description: PySCF/ASE workflow tool — .inp file based calculations with automatic retry
+site_description: PySCF/ASE run-and-retry tool — .inp based local calculations
 site_url: https://dhsohn.github.io/pyscf_auto/
 
 theme:
@@ -47,8 +47,8 @@ nav:
   - 한국어:
       - 개요: ko/index.md
       - 설치 및 시작: ko/getting-started.md
-      - 워크플로우: ko/workflows.md
-      - 큐와 백그라운드 실행: ko/queue.md
+      - 실행 모델: ko/workflows.md
+      - 동시 실행과 락: ko/queue.md
       - 스캔: ko/scan.md
       - 설정 파일: ko/config.md
       - 출력물: ko/outputs.md
@@ -59,8 +59,8 @@ nav:
   - English:
       - Overview: en/index.md
       - Install & Quickstart: en/getting-started.md
-      - Workflows: en/workflows.md
-      - Queue & Background: en/queue.md
+      - Run Model: en/workflows.md
+      - Concurrency & Locking: en/queue.md
       - Scan: en/scan.md
       - Configuration: en/config.md
       - Outputs: en/outputs.md

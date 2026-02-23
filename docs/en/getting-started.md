@@ -17,36 +17,46 @@ conda activate pyscf_auto
 pyscf_auto doctor
 ```
 
-## Configuration File
+## App Configuration
 
-- Supported formats: `.json`, `.yaml/.yml`, `.toml`
-- Default name: `run_config.json`
+pyscf_auto reads runtime/app settings from:
 
-Example (`run_config.yaml`):
+1. `--config` option
+2. `PYSCF_AUTO_CONFIG` environment variable
+3. `~/.pyscf_auto/config.yaml` (default)
+
+Minimal example (`~/.pyscf_auto/config.yaml`):
 
 ```yaml
-calculation_mode: optimization
-basis: def2-svp
-xc: b3lyp
-solvent: vacuum
-optimizer:
-  mode: minimum
-scf:
-  max_cycle: 200
-single_point_enabled: true
-frequency_enabled: true
+runtime:
+  allowed_root: ~/pyscf_runs
+  organized_root: ~/pyscf_outputs
+  default_max_retries: 5
+```
+
+## Prepare a Reaction Directory
+
+Place at least one `.inp` file in a reaction directory under `runtime.allowed_root`.
+
+```bash
+mkdir -p ~/pyscf_runs/water_opt
+cp input/water_opt.inp ~/pyscf_runs/water_opt/
 ```
 
 ## First Run
 
 ```bash
-pyscf_auto run path/to/input.xyz --config run_config.yaml
+pyscf_auto run-inp --reaction-dir ~/pyscf_runs/water_opt
 ```
 
-## Check Results
+## Check Status
 
 ```bash
-pyscf_auto status --recent 5
+pyscf_auto status --reaction-dir ~/pyscf_runs/water_opt
 ```
 
-Logs are written to `log/run.log` inside the run directory by default.
+Run artifacts are written inside the reaction directory, including:
+
+- `run_state.json`
+- `run_report.json`
+- `run_report.md`

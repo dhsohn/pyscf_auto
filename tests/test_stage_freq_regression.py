@@ -2,8 +2,8 @@ import json
 import time
 from pathlib import Path
 
-import workflow.stage_freq as stage_freq
-from workflow.utils import _update_checkpoint_scf
+import execution.stage_freq as stage_freq
+from execution.utils import _update_checkpoint_scf
 
 
 def _build_stage_context(

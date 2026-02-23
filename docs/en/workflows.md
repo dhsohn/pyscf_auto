@@ -1,93 +1,44 @@
-# Workflows
+# Run Execution Model
 
-## Calculation Modes
-
-- `optimization`: geometry optimization (optionally followed by frequency/IRC/single-point)
-- `single_point`: single-point energy
-- `frequency`: harmonic frequencies (Hessian)
-- `irc`: IRC (imaginary mode + IRC)
-- `scan`: 1D/2D scan
+`pyscf_auto` executes one reaction directory at a time with `run-inp`.
+The newest `.inp` file in that directory is selected, parsed, and then executed
+with automatic retry.
 
 ## Top-Level Flow
 
 ```mermaid
 flowchart TD
-  A[CLI: pyscf_auto run] --> B[load config + build run context]
-  B --> C{background?}
-  C -->|yes| D[enqueue background run]
-  C -->|no| E[setup logging + metadata]
-  E --> F{calculation_mode}
-  F -->|optimization| G[optimization stage]
-  F -->|single_point| H[single-point stage]
-  F -->|frequency| I[frequency stage]
-  F -->|irc| J[IRC stage]
-  F -->|scan| K[scan stage]
-  G --> G1[optional frequency]
-  G1 --> G2[optional IRC]
-  G2 --> G3[optional single-point]
-  I --> I1[optional IRC]
-  I1 --> I2[optional single-point]
-  J --> J1[optional single-point]
+  A[pyscf_auto run-inp --reaction-dir DIR] --> B[select latest .inp]
+  B --> C[parse .inp -> config]
+  C --> D[load or create run_state.json]
+  D --> E[attempt loop]
+  E --> F[execute attempt_NNN]
+  F --> G{completed?}
+  G -->|yes| H[finalize completed]
+  G -->|no| I{retry budget left?}
+  I -->|yes| J[apply retry strategy]
+  J --> E
+  I -->|no| K[finalize failed]
 ```
 
-## Post-Optimization and Frequency Steps
+## Retry Behavior
 
-- `frequency_enabled`: enable frequency after optimization.
-- `irc_enabled`: enable IRC after optimization or frequency.
-- `single_point_enabled`: enable single-point after optimization, frequency, or IRC.
+- Total attempts = `1 + max_retries`
+- `max_retries` default comes from app config: `runtime.default_max_retries`
+- Retry patches are recorded per attempt in `run_state.json`
 
-With `calculation_mode: irc`, the optional single-point runs after IRC completes.
+## Status Files
 
-## TS Quality Gating
+Each reaction directory stores:
 
-IRC and single-point execution are gated by imaginary count and TS quality checks.
+- `run_state.json`: machine-readable state
+- `run_report.json`: summarized result
+- `run_report.md`: human-readable report
 
-- Expected imaginary count: 1 for TS optimization (`optimizer.mode: transition_state`), 0 otherwise.
+## Run Status Values
 
-### IRC gate
-
-```mermaid
-flowchart TD
-  A[irc_enabled?] -->|no| Z[skip IRC]
-  A -->|yes| B{frequency_enabled?}
-  B -->|no| C[proceed IRC]
-  B -->|yes| D{imaginary_count available?}
-  D -->|no| E{ts_quality.enforce?}
-  E -->|yes| Z1[skip IRC]
-  E -->|no| C
-  D -->|yes| F{allow_irc set?}
-  F -->|yes| G{allow_irc?}
-  G -->|no| H{ts_quality.enforce?}
-  H -->|yes| Z2[skip IRC]
-  H -->|no| C
-  G -->|yes| C
-  F -->|no| I{imag_count == expected?}
-  I -->|yes| C
-  I -->|no| J{ts_quality.enforce?}
-  J -->|yes| Z3[skip IRC]
-  J -->|no| C
-```
-
-### Single-point gate
-
-```mermaid
-flowchart TD
-  A[single_point_enabled?] -->|no| Z[skip SP]
-  A -->|yes| B{frequency_enabled?}
-  B -->|no| C[run SP]
-  B -->|yes| D{imaginary_count available?}
-  D -->|no| E{ts_quality.enforce?}
-  E -->|yes| Z1[skip SP]
-  E -->|no| C
-  D -->|yes| F{allow_single_point set?}
-  F -->|yes| G{allow_single_point?}
-  G -->|no| H{ts_quality.enforce?}
-  H -->|yes| Z2[skip SP]
-  H -->|no| C
-  G -->|yes| C
-  F -->|no| I{imag_count == expected?}
-  I -->|yes| C
-  I -->|no| J{ts_quality.enforce?}
-  J -->|yes| Z3[skip SP]
-  J -->|no| C
-```
+- `running`
+- `retrying`
+- `completed`
+- `failed`
+- `interrupted`

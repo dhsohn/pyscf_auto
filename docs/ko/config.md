@@ -1,63 +1,65 @@
-# 설정 파일
+# 설정
 
-pyscf_auto 설정 파일은 `.json`, `.yaml/.yml`, `.toml`을 지원합니다.
+pyscf_auto는 설정을 두 계층으로 사용합니다.
 
-## 핵심 필드
+## 1) 계산 입력 (`.inp`)
 
-| 필드 | 설명 |
-| --- | --- |
-| `calculation_mode` | `optimization`, `single_point`, `frequency`, `irc`, `scan` |
-| `basis`, `xc` | 기준 basis/functional |
-| `solvent`, `solvent_model` | 용매 설정 (`pcm`/`smd`, vacuum은 생략 가능) |
-| `dispersion` | 분산 보정 (`d3bj`, `d3zero`, `d4` 등) |
-| `scf` | SCF 설정 (`max_cycle`, `conv_tol`, `chkfile`, `extra`) |
-| `optimizer` | 최적화 설정 (`mode`, `ase`) |
-| `single_point` | 단일점 override 설정 |
-| `frequency_enabled` | 최적화 후 주파수 실행 여부 |
-| `single_point_enabled` | 최적화/주파수/IRC 후 단일점 실행 여부 |
-| `irc_enabled` | 최적화/주파수 후 IRC 실행 여부 |
-| `scan` / `scan2d` | 스캔 설정 (`dimensions`, `mode`, `executor`) |
-| `ts_quality` | TS 품질 검사 옵션 (`enforce` 등) |
-| `threads`, `memory_gb` | 자원 설정 |
-| `io` | 쓰기 간격 (`scan_write_interval_points` 등) |
+각 반응 디렉터리에는 최소 1개의 `.inp` 파일이 필요합니다.
+`run-inp`는 가장 최근 수정된 `.inp`를 선택해 실행합니다.
 
-`calculation_mode: frequency`에서는 `irc_enabled`, `single_point_enabled`로
-주파수 계산 뒤 후속 단계를 제어합니다. `calculation_mode: irc`에서는
-`single_point_enabled`가 IRC 완료 후 단일점을 제어합니다.
+일반적인 `.inp` 구성:
 
-## 기본 예시 (최적화 + 주파수 + 단일점)
+- 라우트 라인(`! ...`): 작업 타입/함수/기저
+- 선택 블록(`%scf`, `%optimizer`, `%runtime` 등)
+- 지오메트리 블록(`* xyz ... *` 또는 `* xyzfile ...`)
 
-```yaml
-calculation_mode: optimization
-basis: def2-svp
-xc: b3lyp
-solvent: vacuum
-optimizer:
-  mode: minimum
-scf:
-  max_cycle: 200
-single_point_enabled: true
-frequency_enabled: true
+예시:
+
+```text
+! Opt B3LYP def2-SVP D3BJ PCM(water)
+
+%scf
+  max_cycle 300
+  conv_tol 1e-10
+end
+
+%runtime
+  threads 4
+  memory_gb 8
+end
+
+* xyz 0 1
+O 0.0 0.0 0.0
+H 0.0 0.0 1.0
+H 0.0 1.0 0.0
+*
 ```
 
-## 스캔 예시
-
-```yaml
-calculation_mode: scan
-scan:
-  mode: optimization
-  executor: local
-  dimensions:
-    - type: bond
-      i: 0
-      j: 1
-      start: 1.0
-      end: 1.4
-      step: 0.2
-```
-
-## 유효성 검사
+실행 없이 입력 유효성만 검사:
 
 ```bash
-pyscf_auto validate-config run_config.yaml
+pyscf_auto validate path/to/input.inp
+```
+
+## 2) 앱 런타임 설정 (`config.yaml`)
+
+앱 레벨 설정은 다음 순서로 로드됩니다.
+
+1. `--config PATH`
+2. `PYSCF_AUTO_CONFIG`
+3. `~/.pyscf_auto/config.yaml`
+
+핵심 필드:
+
+- `runtime.allowed_root`: `--reaction-dir` 허용 루트
+- `runtime.organized_root`: `organize` 출력 루트
+- `runtime.default_max_retries`: 기본 재시도 횟수
+
+예시:
+
+```yaml
+runtime:
+  allowed_root: ~/pyscf_runs
+  organized_root: ~/pyscf_outputs
+  default_max_retries: 5
 ```

@@ -1,62 +1,65 @@
 # CLI 레퍼런스
 
-## run
+## run-inp
+
+반응 디렉터리에서 가장 최신 `.inp` 파일을 골라 계산을 실행합니다.
 
 ```bash
-pyscf_auto run input.xyz --config run_config.yaml
+pyscf_auto run-inp --reaction-dir ~/pyscf_runs/water_opt
 ```
 
 주요 옵션:
 
-- `--background`: 백그라운드 큐 실행
-- `--profile`: SCF/gradient/Hessian 타이밍 기록
-- `--resume <RUN_DIR>`: 기존 실행 재개
-- `--force-resume`: 완료/실패 상태도 재개 허용
-- `--queue-priority <N>`: 큐 우선순위
-- `--queue-max-runtime <SEC>`: 큐 타임아웃
-- `--scan-dimension ...`, `--scan-mode ...`, `--scan-grid ...`: CLI 스캔 오버라이드
+- `--max-retries N`: 재시도 횟수 덮어쓰기
+- `--force`: 이미 완료된 경우에도 강제 재실행
+- `--json`: JSON 요약 출력
+- `--profile`: 프로파일링 활성화
+- `--verbose`: 디버그 로그
+- `--config PATH`: 앱 설정 파일 경로
 
 ## status
 
-```bash
-pyscf_auto status
+반응 디렉터리 실행 상태를 확인합니다.
 
-pyscf_auto status --recent 5
+```bash
+pyscf_auto status --reaction-dir ~/pyscf_runs/water_opt
+pyscf_auto status --reaction-dir ~/pyscf_runs/water_opt --json
 ```
 
-## queue
+## organize
+
+완료된 결과를 정리할 경로를 미리보기/적용합니다.
 
 ```bash
-pyscf_auto queue status
-pyscf_auto queue cancel <RUN_ID>
-pyscf_auto queue retry <RUN_ID>
-pyscf_auto queue requeue-failed
-pyscf_auto queue prune --keep-days 30
-pyscf_auto queue archive
+# allowed_root 전체 드라이런
+pyscf_auto organize
+
+# 단일 반응 디렉터리 정리
+pyscf_auto organize --reaction-dir ~/pyscf_runs/water_opt --apply
+
+# 특정 루트 전체 정리
+pyscf_auto organize --root ~/pyscf_runs --apply
 ```
 
-## validate-config
+정리된 결과 검색:
 
 ```bash
-pyscf_auto validate-config run_config.yaml
+pyscf_auto organize --find RUN_ID
+pyscf_auto organize --find RUN_ID --job-type opt --limit 20 --json
 ```
 
 ## doctor
+
+의존성/런타임 진단을 실행합니다.
 
 ```bash
 pyscf_auto doctor
 ```
 
-## smoke-test
+## validate
+
+계산 없이 `.inp` 파일 유효성만 검사합니다.
 
 ```bash
-pyscf_auto smoke-test --smoke-mode quick
-```
-
-## scan-point (고급)
-
-`scan.executor: manifest`로 생성된 매니페스트를 사용해 포인트를 실행합니다.
-
-```bash
-pyscf_auto scan-point --manifest path/to/scan_manifest.json --index 0
+pyscf_auto validate input/water_opt.inp
 ```

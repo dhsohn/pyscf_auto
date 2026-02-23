@@ -1,55 +1,22 @@
-# Queue & Background Execution
+# Concurrency & Locking
 
-## Basics
+Current `pyscf_auto` CLI does not expose a queue command.
+Execution is local and directory-scoped through `run-inp`.
 
-- Use `--background` to enqueue a run; the queue runner executes it.
-- Foreground runs are also recorded for status tracking and show up in `pyscf_auto queue status`.
+## What Happens on Concurrent Runs
 
-## Queue/Background Flow
+- Each reaction directory uses a run lock.
+- Starting `run-inp` twice for the same directory will reject the second run.
+- Different reaction directories can run in parallel.
 
-```mermaid
-flowchart TD
-  A[pyscf_auto run] --> B{background?}
-  B -->|yes| C[enqueue run]
-  C --> D[start queue runner]
-  D --> E[queue runner picks entry]
-  E --> F[subprocess runs pyscf_auto without background]
-  F --> G[update status]
-  B -->|no| H[foreground run]
-  H --> I[register queue entry]
-  I --> G
-```
-
-## Status Transitions
-
-```mermaid
-stateDiagram-v2
-  [*] --> queued: enqueue / requeue
-  queued --> running: queue runner picks entry
-  queued --> canceled: queue cancel
-  running --> completed: exit_code == 0
-  running --> failed: exit_code != 0 or stale recovery
-  running --> timeout: max_runtime_seconds exceeded
-  failed --> queued: queue retry / requeue-failed
-  timeout --> queued: queue retry / requeue-failed
-  canceled --> queued: queue retry (manual)
-  completed --> queued: queue retry (manual)
-```
-
-## Common Commands
+## Practical Pattern
 
 ```bash
-pyscf_auto run input.xyz --config run_config.yaml --background
-
-pyscf_auto queue status
-pyscf_auto queue cancel <RUN_ID>
-pyscf_auto queue retry <RUN_ID>
-pyscf_auto queue requeue-failed
-pyscf_auto queue prune --keep-days 30
-pyscf_auto queue archive
+pyscf_auto run-inp --reaction-dir ~/pyscf_runs/reaction_A
+pyscf_auto run-inp --reaction-dir ~/pyscf_runs/reaction_B
 ```
 
-## Related Files
+## Notes
 
-- Queue file: `~/pyscf_auto/runs/queue.json`
-- Queue runner log: `~/pyscf_auto/log/queue_runner.log`
+- Retry is built into each run (`--max-retries` / config default).
+- Progress and terminal status are written to `run_state.json` in the reaction directory.

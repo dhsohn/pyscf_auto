@@ -1,9 +1,9 @@
 # Troubleshooting
 
-## SMD Errors
+## SMD-Related Errors
 
-- You need an SMD-enabled PySCF build.
-- Example message: "Install the SMD-enabled PySCF package..."
+- You need a PySCF build with SMD support.
+- Typical fix:
 
 ```bash
 conda install -c daehyupsohn -c conda-forge pyscf
@@ -11,19 +11,19 @@ conda install -c daehyupsohn -c conda-forge pyscf
 
 ## SCF Convergence Failures
 
-- pyscf_auto retries with level shift/damping by default.
-- Disable retries with `PYSCF_AUTO_SCF_RETRY=0`.
+- pyscf_auto applies retry patches automatically.
+- Increase retry budget with `--max-retries` if needed.
+- Review `run_state.json` and attempt directories for details.
 
-## Queue Appears Stuck
+## "Run already in progress" Errors
 
-- Check status: `pyscf_auto queue status`
-- Check runner log: `~/pyscf_auto/log/queue_runner.log`
-- Requeue failed: `pyscf_auto queue requeue-failed`
+- Another process is already running for the same reaction directory.
+- Wait for completion or run a different reaction directory.
 
-## Memory/Threads
+## Memory / Threads
 
-- `memory_gb` is passed to PySCF `max_memory`.
-- Threading depends on OpenMP availability.
+- `memory_gb` and `threads` are set in `.inp` `%runtime` block.
+- Effective threading depends on OpenMP availability.
 
 ## Diagnostics
 

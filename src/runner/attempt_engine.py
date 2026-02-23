@@ -34,7 +34,7 @@ def run_attempts(
 
     This is the core retry loop that:
     1. Converts InpConfig to RunConfig
-    2. Runs the calculation through the workflow engine
+    2. Runs the calculation through the execution engine
     3. Analyzes the result
     4. Retries with modified config if needed
     5. Records each attempt in the state
@@ -175,7 +175,7 @@ def _run_single_attempt(
 ) -> AttemptRecord:
     """Execute a single calculation attempt.
 
-    This bridges to the existing pyscf_auto workflow engine.
+    This bridges the retry runner to the execution engine.
 
     Returns:
         An AttemptRecord with the outcome.
@@ -192,21 +192,14 @@ def _run_single_attempt(
         # Build RunConfig from the config dictionary
         run_config = build_run_config(config_dict)
 
-        # Create an args-like namespace for the workflow
-        args = _build_workflow_args(xyz_path, attempt_dir)
+        # Create an args-like namespace for the execution engine entrypoint.
+        args = _build_engine_args(xyz_path, attempt_dir)
 
-        # Import and run the workflow
-        import workflow
-        from workflow.context import prepare_run_context
+        # Import and run the execution engine.
+        import execution
 
         config_raw = __import__("json").dumps(config_dict, indent=2)
-        context = prepare_run_context(args, run_config, config_raw)
-
-        # Override run_dir to use attempt directory
-        context["run_dir"] = attempt_dir
-
-        # Run the workflow
-        workflow.run(args, run_config, config_raw, None, False)
+        execution.run(args, run_config, config_raw, None, False)
 
         # If we get here, the calculation completed without exception
         attempt["analyzer_status"] = "completed"
@@ -230,8 +223,8 @@ def _run_single_attempt(
     return attempt
 
 
-def _build_workflow_args(xyz_path: str, run_dir: str):
-    """Build an argparse-compatible namespace for the workflow."""
+def _build_engine_args(xyz_path: str, run_dir: str):
+    """Build an argparse-compatible namespace for the execution engine."""
     from types import SimpleNamespace
 
     return SimpleNamespace(

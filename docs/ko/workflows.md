@@ -1,93 +1,44 @@
-# 워크플로우
+# 실행 모델
 
-## 계산 모드
+`pyscf_auto`는 `run-inp`로 반응 디렉터리 단위 계산을 수행합니다.
+해당 디렉터리에서 가장 최신 `.inp` 파일을 선택해 파싱한 뒤,
+자동 재시도 루프로 계산을 실행합니다.
 
-- `optimization`: 구조 최적화 (선택적으로 frequency/IRC/single-point를 이어서 실행)
-- `single_point`: 단일점 에너지
-- `frequency`: 진동수 (Hessian 포함)
-- `irc`: IRC (가상 모드 계산 후 실행)
-- `scan`: 1D/2D 스캔
-
-## 전체 실행 흐름
+## 상위 실행 흐름
 
 ```mermaid
 flowchart TD
-  A[CLI: pyscf_auto run] --> B[load config + build run context]
-  B --> C{background?}
-  C -->|yes| D[enqueue background run]
-  C -->|no| E[setup logging + metadata]
-  E --> F{calculation_mode}
-  F -->|optimization| G[optimization stage]
-  F -->|single_point| H[single-point stage]
-  F -->|frequency| I[frequency stage]
-  F -->|irc| J[IRC stage]
-  F -->|scan| K[scan stage]
-  G --> G1[optional frequency]
-  G1 --> G2[optional IRC]
-  G2 --> G3[optional single-point]
-  I --> I1[optional IRC]
-  I1 --> I2[optional single-point]
-  J --> J1[optional single-point]
+  A[pyscf_auto run-inp --reaction-dir DIR] --> B[최신 .inp 선택]
+  B --> C[.inp 파싱 -> config]
+  C --> D[run_state.json 로드/생성]
+  D --> E[attempt 루프]
+  E --> F[attempt_NNN 실행]
+  F --> G{성공?}
+  G -->|yes| H[completed 종료 처리]
+  G -->|no| I{재시도 예산 남음?}
+  I -->|yes| J[retry 전략 적용]
+  J --> E
+  I -->|no| K[failed 종료 처리]
 ```
 
-## 최적화 및 주파수 후속 단계
+## 재시도 동작
 
-- `frequency_enabled`: 최적화 후 진동수 계산 수행 여부.
-- `irc_enabled`: 최적화 또는 주파수 후 IRC 실행 여부.
-- `single_point_enabled`: 최적화/주파수/IRC 후 단일점 계산 수행 여부.
+- 전체 시도 횟수 = `1 + max_retries`
+- 기본 `max_retries`는 앱 설정 `runtime.default_max_retries`를 사용
+- 각 시도에서 적용된 패치는 `run_state.json`에 기록
 
-`calculation_mode: irc`에서는 IRC 완료 후 단일점 계산을 선택적으로 실행합니다.
+## 상태/리포트 파일
 
-## TS 품질(ts_quality) 게이트
+각 반응 디렉터리에 다음 파일이 생성됩니다.
 
-주파수 결과의 imaginary count 및 TS 품질 검사 결과에 따라 IRC/단일점 실행이 자동으로 gating 됩니다.
+- `run_state.json`: 상태 원본
+- `run_report.json`: 요약 결과
+- `run_report.md`: 사람이 읽기 쉬운 리포트
 
-- 기대 imaginary count: TS 최적화(`optimizer.mode: transition_state`)는 1, 일반 최소화는 0
+## 주요 상태 값
 
-### IRC gate
-
-```mermaid
-flowchart TD
-  A[irc_enabled?] -->|no| Z[skip IRC]
-  A -->|yes| B{frequency_enabled?}
-  B -->|no| C[proceed IRC]
-  B -->|yes| D{imaginary_count available?}
-  D -->|no| E{ts_quality.enforce?}
-  E -->|yes| Z1[skip IRC]
-  E -->|no| C
-  D -->|yes| F{allow_irc set?}
-  F -->|yes| G{allow_irc?}
-  G -->|no| H{ts_quality.enforce?}
-  H -->|yes| Z2[skip IRC]
-  H -->|no| C
-  G -->|yes| C
-  F -->|no| I{imag_count == expected?}
-  I -->|yes| C
-  I -->|no| J{ts_quality.enforce?}
-  J -->|yes| Z3[skip IRC]
-  J -->|no| C
-```
-
-### Single-point gate
-
-```mermaid
-flowchart TD
-  A[single_point_enabled?] -->|no| Z[skip SP]
-  A -->|yes| B{frequency_enabled?}
-  B -->|no| C[run SP]
-  B -->|yes| D{imaginary_count available?}
-  D -->|no| E{ts_quality.enforce?}
-  E -->|yes| Z1[skip SP]
-  E -->|no| C
-  D -->|yes| F{allow_single_point set?}
-  F -->|yes| G{allow_single_point?}
-  G -->|no| H{ts_quality.enforce?}
-  H -->|yes| Z2[skip SP]
-  H -->|no| C
-  G -->|yes| C
-  F -->|no| I{imag_count == expected?}
-  I -->|yes| C
-  I -->|no| J{ts_quality.enforce?}
-  J -->|yes| Z3[skip SP]
-  J -->|no| C
-```
+- `running`
+- `retrying`
+- `completed`
+- `failed`
+- `interrupted`

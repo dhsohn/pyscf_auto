@@ -28,7 +28,7 @@ try:
     import run_opt_smoke
 except ImportError:
     run_opt_smoke = None  # Legacy smoke test removed
-import workflow
+import execution
 from env_compat import getenv_with_legacy
 from run_opt_config import (
     DEFAULT_QUEUE_LOCK_PATH,
@@ -620,7 +620,7 @@ def _run_smoke_test_case(
         os.environ[legacy_skip_capability_check] = "1"
         config = build_run_config(smoke_config)
         try:
-            workflow.run(
+            execution.run(
                 run_args,
                 config,
                 smoke_config_raw,
@@ -1041,11 +1041,11 @@ def _build_run_config_or_raise(config):
 
 
 def _run_doctor_command(_args):
-    workflow.run_doctor()
+    execution.run_doctor()
 
 
 def _run_scan_point_command(args):
-    from workflow.stage_scan import run_scan_point_from_manifest
+    from execution.stage_scan import run_scan_point_from_manifest
 
     run_scan_point_from_manifest(args.manifest, args.index)
 
@@ -1256,7 +1256,7 @@ def _apply_resume_status_guard(args, config):
         )
 
 
-def _run_workflow_with_smoke_signals(
+def _run_execution_with_smoke_signals(
     args, config, config_raw, config_source_path, run_in_background
 ):
     smoke_status_path = getenv_with_legacy(
@@ -1282,7 +1282,7 @@ def _run_workflow_with_smoke_signals(
                 interval = SMOKE_TEST_HEARTBEAT_INTERVAL
         stop_heartbeat = _start_smoke_heartbeat(smoke_heartbeat_path, interval)
     try:
-        workflow.run(args, config, config_raw, config_source_path, run_in_background)
+        execution.run(args, config, config_raw, config_source_path, run_in_background)
         exit_code = 0
     finally:
         if stop_heartbeat:
@@ -1314,7 +1314,7 @@ def _run_command(args):
     config, config_raw = _apply_run_cli_config_overrides(config, config_raw, args)
     config = _build_run_config_or_raise(config)
     _apply_resume_status_guard(args, config)
-    _run_workflow_with_smoke_signals(
+    _run_execution_with_smoke_signals(
         args,
         config,
         config_raw,

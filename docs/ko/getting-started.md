@@ -17,36 +17,46 @@ conda activate pyscf_auto
 pyscf_auto doctor
 ```
 
-## 구성 파일
+## 앱 설정
 
-- 지원 형식: `.json`, `.yaml/.yml`, `.toml`
-- 기본 이름: `run_config.json`
+pyscf_auto는 아래 우선순위로 앱 설정을 읽습니다.
 
-예시(`run_config.yaml`):
+1. `--config` 옵션
+2. `PYSCF_AUTO_CONFIG` 환경 변수
+3. `~/.pyscf_auto/config.yaml` (기본)
+
+최소 예시(`~/.pyscf_auto/config.yaml`):
 
 ```yaml
-calculation_mode: optimization
-basis: def2-svp
-xc: b3lyp
-solvent: vacuum
-optimizer:
-  mode: minimum
-scf:
-  max_cycle: 200
-single_point_enabled: true
-frequency_enabled: true
+runtime:
+  allowed_root: ~/pyscf_runs
+  organized_root: ~/pyscf_outputs
+  default_max_retries: 5
+```
+
+## 반응 디렉터리 준비
+
+`runtime.allowed_root` 아래 반응 디렉터리에 `.inp` 파일을 둡니다.
+
+```bash
+mkdir -p ~/pyscf_runs/water_opt
+cp input/water_opt.inp ~/pyscf_runs/water_opt/
 ```
 
 ## 첫 실행
 
 ```bash
-pyscf_auto run path/to/input.xyz --config run_config.yaml
+pyscf_auto run-inp --reaction-dir ~/pyscf_runs/water_opt
 ```
 
-## 결과 확인
+## 상태 확인
 
 ```bash
-pyscf_auto status --recent 5
+pyscf_auto status --reaction-dir ~/pyscf_runs/water_opt
 ```
 
-로그는 기본적으로 `log/run.log`에 기록됩니다.
+실행 산출물은 반응 디렉터리 안에 생성됩니다.
+
+- `run_state.json`
+- `run_report.json`
+- `run_report.md`

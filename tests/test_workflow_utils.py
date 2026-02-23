@@ -1,6 +1,6 @@
 import pytest
 
-from workflow.utils import _normalize_frequency_dispersion_mode, _xc_includes_dispersion
+from execution.utils import _normalize_frequency_dispersion_mode, _xc_includes_dispersion
 
 
 @pytest.mark.parametrize(

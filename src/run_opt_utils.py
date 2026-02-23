@@ -1,4 +1,4 @@
-"""Shared helpers for run_opt workflows."""
+"""Shared helpers for run_opt runs."""
 
 from typing import Any, Literal, TypeAlias
 

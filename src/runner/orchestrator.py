@@ -1,4 +1,4 @@
-"""Main orchestration for pyscf_auto run-inp workflow."""
+"""Main orchestration for pyscf_auto run-inp execution."""
 
 from __future__ import annotations
 

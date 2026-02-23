@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pyscf_auto"
 version = "0.1.0"
-description = "Lightweight PySCF/ASE workflow for geometry optimization and analysis. Conda-only distribution; pip install is unsupported."
+description = "Lightweight PySCF/ASE retry runner for geometry optimization and analysis. Conda-only distribution; pip install is unsupported."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = ["pydantic>=2.0", "PyYAML>=6.0"]
@@ -39,7 +39,7 @@ py-modules = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["workflow", "inp", "runner", "notifier", "organizer"]
+include = ["execution", "inp", "runner", "notifier", "organizer"]
 
 [tool.ruff]
 extend-exclude = ["build"]

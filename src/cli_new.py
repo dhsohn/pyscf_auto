@@ -1,4 +1,4 @@
-"""New CLI for pyscf_auto with .inp file-based workflow.
+"""CLI for pyscf_auto with .inp file-based runs.
 
 Usage::
 
@@ -20,7 +20,7 @@ import sys
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pyscf_auto",
-        description="PySCF calculation workflow with .inp file input.",
+        description="PySCF calculation runner with .inp file input.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -270,9 +270,9 @@ def _cmd_organize(args: argparse.Namespace) -> None:
 
 
 def _cmd_doctor() -> None:
-    import workflow
+    from runner.doctor import run_doctor
 
-    workflow.run_doctor()
+    run_doctor()
 
 
 def _cmd_validate(args: argparse.Namespace) -> None:
