@@ -1,0 +1,28 @@
+# pyscf_auto input file
+# TAG: Water_H2O
+! Opt B3LYP def2-SVP D3BJ PCM(water)
+
+%scf
+  max_cycle 300
+  conv_tol 1e-10
+end
+
+%optimizer
+  steps 500
+  fmax 0.05
+end
+
+%thermo
+  temperature 298.15
+end
+
+%runtime
+  threads 4
+  memory_gb 8
+end
+
+* xyz 0 1
+O     -0.1659811139    2.0308399200   -0.0000031757
+H     -2.5444712639    1.0182403326    0.6584512591
+H     -1.0147968531    2.4412472248   -2.0058431625
+*

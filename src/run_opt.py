@@ -16,9 +16,18 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-import cli
-import run_queue
-import run_opt_smoke
+try:
+    import cli
+except ImportError:
+    cli = None  # Legacy CLI removed; using cli_new
+try:
+    import run_queue
+except ImportError:
+    run_queue = None  # Legacy queue removed
+try:
+    import run_opt_smoke
+except ImportError:
+    run_opt_smoke = None  # Legacy smoke test removed
 import workflow
 from env_compat import getenv_with_legacy
 from run_opt_config import (
@@ -1315,16 +1324,9 @@ def _run_command(args):
 
 
 def main():
-    """Main function to run the geometry optimization."""
-    args = _parse_cli_args()
-    _maybe_auto_archive(args.command)
-    try:
-        if _dispatch_non_run_command(args):
-            return
-        _run_command(args)
-    except Exception:
-        logging.exception("Run failed.")
-        raise
+    """Main function — redirects to the new .inp-based CLI."""
+    from cli_new import main as new_main
+    new_main()
 
 
 if __name__ == "__main__":
