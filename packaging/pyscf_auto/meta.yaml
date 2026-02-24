@@ -9,7 +9,7 @@ source:
   path: ../..
 
 build:
-  number: 31
+  number: 32
   noarch: python
 
 requirements:
@@ -24,7 +24,7 @@ requirements:
     - dftd3-python
     - dftd4-python
     - h5py
-    - basis-set-exchange
+    - basis_set_exchange
     - numpy
     - pydantic >=2.0
     - pyscf * smd_py*
