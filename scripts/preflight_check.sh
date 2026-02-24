@@ -6,7 +6,7 @@ echo "=== Preflight Check ==="
 
 # 1. Running processes (exclude this script itself and parent shell)
 echo "[1/4] Checking running processes..."
-RUNNING=$(pgrep -af 'pyscf_auto|python.*cli_new|run_opt.py' 2>/dev/null | grep -v "preflight_check" | grep -v "$$" || true)
+RUNNING=$(pgrep -af 'pyscf_auto|python.*cli_new' 2>/dev/null | grep -v "preflight_check" | grep -v "$$" || true)
 if [ -n "$RUNNING" ]; then
   echo "  FAIL: pyscf_auto-related processes are running. Abort cutover."
   echo "$RUNNING"

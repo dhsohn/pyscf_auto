@@ -122,16 +122,43 @@ def _to_reaction_relative_path(path_value: Any, reaction_dir: Path) -> str:
     return str(path)
 
 
+def _is_subpath(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def rebuild_index(organized_root: Path) -> int:
     """Rebuild index records by scanning organized outputs."""
     path = records_path(organized_root)
     records_by_run_id: dict[str, dict[str, Any]] = {}
+    root_resolved = organized_root.resolve()
+    index_root = (organized_root / INDEX_DIR_NAME).resolve()
 
     if organized_root.exists():
-        for state_file in sorted(organized_root.rglob("run_state.json")):
-            if INDEX_DIR_NAME in state_file.parts:
+        for dirpath, dirnames, filenames in os.walk(organized_root, followlinks=False):
+            current_dir = Path(dirpath)
+            dirnames[:] = [name for name in dirnames if not (current_dir / name).is_symlink()]
+
+            try:
+                current_resolved = current_dir.resolve()
+            except OSError:
                 continue
-            reaction_dir = state_file.parent
+
+            if not _is_subpath(current_resolved, root_resolved):
+                continue
+            if current_resolved == index_root or _is_subpath(current_resolved, index_root):
+                dirnames[:] = []
+                continue
+            if "run_state.json" not in filenames:
+                continue
+
+            state_file = current_dir / "run_state.json"
+            if state_file.is_symlink():
+                continue
+
             try:
                 state = json.loads(state_file.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
@@ -153,19 +180,19 @@ def rebuild_index(organized_root: Path) -> int:
             last_attempt = attempts[-1] if attempts and isinstance(attempts[-1], dict) else {}
 
             try:
-                rel = reaction_dir.relative_to(organized_root)
+                rel = current_resolved.relative_to(root_resolved)
                 rel_parts = rel.parts
                 organized_path = str(rel)
             except ValueError:
                 rel_parts = ()
-                organized_path = str(reaction_dir)
+                organized_path = str(current_resolved)
 
             job_type = rel_parts[0] if len(rel_parts) >= 1 else "other"
             molecule_key = rel_parts[1] if len(rel_parts) >= 2 else "unknown"
 
             records_by_run_id[run_id] = {
                 "run_id": run_id,
-                "reaction_dir": str(reaction_dir),
+                "reaction_dir": str(current_resolved),
                 "status": state.get("status", ""),
                 "analyzer_status": final_result.get("analyzer_status", ""),
                 "reason": final_result.get("reason", ""),
@@ -173,7 +200,7 @@ def rebuild_index(organized_root: Path) -> int:
                 "molecule_key": molecule_key,
                 "selected_inp": _to_reaction_relative_path(
                     state.get("selected_inp", ""),
-                    reaction_dir,
+                    current_resolved,
                 ),
                 "last_attempt_status": (
                     last_attempt.get("analyzer_status", "")

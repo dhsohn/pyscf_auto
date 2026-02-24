@@ -131,8 +131,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     )
     snapshot_mode = str(snapshot_mode).lower()
     profiling_enabled = bool(getattr(args, "profile", False)) or env_truthy(
-        "PYSCF_AUTO_PROFILE",
-        "DFTFLOW_PROFILE",
+        "PYSCF_AUTO_PROFILE"
     )
     resume_dir = getattr(args, "resume", None)
     run_dir = args.run_dir or resume_dir or create_run_directory()

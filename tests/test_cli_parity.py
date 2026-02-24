@@ -7,7 +7,6 @@ import pytest
 
 from app_config import AppConfig, RuntimeConfig
 from cli_new import (
-    _validate_root_scan_dir,
     build_parser,
     main,
 )
@@ -99,6 +98,13 @@ def test_parser_has_global_config_and_verbose() -> None:
     assert args.command == "status"
 
 
+def test_parser_accepts_cleanup_command() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["cleanup", "--root", "/tmp/organized"])
+    assert args.command == "cleanup"
+    assert args.root == "/tmp/organized"
+
+
 def test_parser_rejects_legacy_doctor_and_validate_commands() -> None:
     parser = build_parser()
     with pytest.raises(SystemExit):
@@ -131,16 +137,6 @@ def test_cmd_status_requires_allowed_root(tmp_path: Path) -> None:
         app_config=app_config,
     )
     assert exit_code == 1
-
-
-def test_validate_root_scan_dir_requires_exact_allowed_root(tmp_path: Path) -> None:
-    allowed_root = (tmp_path / "runs").resolve()
-    allowed_root.mkdir()
-    subdir = allowed_root / "batch1"
-    subdir.mkdir()
-
-    assert _validate_root_scan_dir(str(subdir), allowed_root) is None
-    assert _validate_root_scan_dir(str(allowed_root), allowed_root) == allowed_root
 
 
 def test_organize_run_builds_index_and_detects_duplicate(tmp_path: Path) -> None:
@@ -239,6 +235,23 @@ def test_rebuild_index_and_find_records(tmp_path: Path) -> None:
     by_job_type = find_organized_runs(str(organized_root), job_type="single_point")
     assert len(by_job_type) == 1
     assert by_job_type[0]["job_type"] == "single_point"
+
+
+def test_rebuild_index_ignores_symlinked_external_runs(tmp_path: Path) -> None:
+    organized_root = tmp_path / "outputs"
+    organized_root.mkdir()
+
+    external = tmp_path / "external_run"
+    _write_minimal_completed_run(external, "run_20260224_020000_symlinked")
+
+    link_dir = organized_root / "linked_external"
+    try:
+        link_dir.symlink_to(external, target_is_directory=True)
+    except OSError:
+        return
+
+    count = rebuild_organized_index(str(organized_root))
+    assert count == 0
 
 
 def test_cli_organize_find_requires_selector(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import traceback
@@ -266,23 +267,31 @@ def _run_single_attempt(
         # Import and run the execution engine.
         import execution
 
-        config_raw = __import__("json").dumps(config_dict, indent=2)
+        config_raw = json.dumps(config_dict, indent=2)
         execution.run(args, run_config, config_raw, None, False)
+        metadata = _load_attempt_metadata(attempt_dir)
+        status_hint, reason_hint = _classify_from_metadata(metadata)
+        if status_hint and status_hint != "completed":
+            attempt["analyzer_status"] = status_hint
+            attempt["analyzer_reason"] = reason_hint or "execution_failed"
+            attempt["converged"] = False
+        else:
+            attempt["analyzer_status"] = "completed"
+            attempt["analyzer_reason"] = "normal_termination"
+            attempt["converged"] = True
 
-        # If we get here, the calculation completed without exception
-        attempt["analyzer_status"] = "completed"
-        attempt["analyzer_reason"] = "normal_termination"
-        attempt["converged"] = True
-
-        # Try to extract energy from metadata
-        energy = _extract_energy_from_attempt(attempt_dir)
+        energy = _extract_energy_from_metadata(metadata)
+        if energy is None:
+            energy = _extract_energy_from_attempt(attempt_dir)
         if energy is not None:
             attempt["energy"] = energy
 
     except Exception as exc:
         error_msg = str(exc)
-        attempt["analyzer_status"] = _classify_error(error_msg)
-        attempt["analyzer_reason"] = error_msg[:500]
+        metadata = _load_attempt_metadata(attempt_dir)
+        status_hint, reason_hint = _classify_from_metadata(metadata)
+        attempt["analyzer_status"] = status_hint or _classify_error(error_msg)
+        attempt["analyzer_reason"] = (reason_hint or error_msg)[:500]
         attempt["converged"] = False
         attempt["error"] = traceback.format_exc()[:2000]
         logger.warning("Attempt %d failed: %s", attempt_num, error_msg)
@@ -319,6 +328,12 @@ def _build_engine_args(xyz_path: str, run_dir: str):
 def _classify_error(error_msg: str) -> str:
     """Classify an error message into an analyzer status."""
     lower = error_msg.lower()
+    if "timeout" in lower or "timed out" in lower:
+        return "timeout"
+    if "cancel" in lower or "keyboardinterrupt" in lower:
+        return "canceled"
+    if "no space left" in lower or "disk" in lower or "i/o error" in lower:
+        return "error_disk_io"
     if "scf" in lower and ("converge" in lower or "convergence" in lower):
         return "error_scf_convergence"
     if "not converged" in lower:
@@ -336,8 +351,6 @@ def _classify_error(error_msg: str) -> str:
 
 def _extract_energy_from_attempt(attempt_dir: str) -> float | None:
     """Try to extract the final energy from attempt metadata."""
-    import json
-
     metadata_path = os.path.join(attempt_dir, "metadata.json")
     if not os.path.exists(metadata_path):
         return None
@@ -347,3 +360,65 @@ def _extract_energy_from_attempt(attempt_dir: str) -> float | None:
         return metadata.get("energy") or metadata.get("final_energy")
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def _load_attempt_metadata(attempt_dir: str) -> dict[str, Any] | None:
+    metadata_path = os.path.join(attempt_dir, "metadata.json")
+    if not os.path.exists(metadata_path):
+        return None
+    try:
+        with open(metadata_path, "r", encoding="utf-8") as handle:
+            metadata = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return metadata if isinstance(metadata, dict) else None
+
+
+def _extract_energy_from_metadata(metadata: dict[str, Any] | None) -> float | None:
+    if not isinstance(metadata, dict):
+        return None
+    for key in ("energy", "final_energy"):
+        value = metadata.get(key)
+        if isinstance(value, (float, int)):
+            return float(value)
+    summary = metadata.get("summary")
+    if isinstance(summary, dict):
+        for key in ("energy", "final_energy"):
+            value = summary.get(key)
+            if isinstance(value, (float, int)):
+                return float(value)
+    return None
+
+
+def _classify_from_metadata(metadata: dict[str, Any] | None) -> tuple[str | None, str | None]:
+    if not isinstance(metadata, dict):
+        return None, None
+
+    status_text = str(metadata.get("status", "")).strip().lower()
+    summary = metadata.get("summary")
+    summary_dict = summary if isinstance(summary, dict) else {}
+    reason_text = _first_non_empty(
+        summary_dict.get("reason"),
+        summary_dict.get("status_reason"),
+        metadata.get("error"),
+        metadata.get("traceback"),
+    )
+    if status_text in {"completed", "success"}:
+        return "completed", "normal_termination"
+    if status_text == "timeout":
+        return "timeout", reason_text or "timeout"
+    if status_text in {"canceled", "cancelled"}:
+        return "canceled", reason_text or "canceled"
+    if status_text in {"failed", "error"}:
+        reason_value = reason_text or status_text
+        return _classify_error(reason_value), reason_value
+    return None, reason_text
+
+
+def _first_non_empty(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str):
+            text = value.strip()
+            if text:
+                return text
+    return None

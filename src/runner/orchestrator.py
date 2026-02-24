@@ -300,7 +300,14 @@ def _looks_like_completed_out(out_path: Path) -> bool:
         text = out_path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return False
-    return "normal termination" in text.lower()
+    lowered = text.lower()
+    completion_markers = (
+        "normal termination",
+        "terminated normally",
+        "calculation completed",
+        "status: completed",
+    )
+    return any(marker in lowered for marker in completion_markers)
 
 
 def _is_subpath(path: Path, root: Path) -> bool:

@@ -5,7 +5,7 @@ import re
 import time
 from functools import lru_cache
 
-from env_compat import getenv_with_legacy
+from env_compat import getenv_str
 from run_opt_config import (
     DEFAULT_CHARGE,
     DEFAULT_MULTIPLICITY,
@@ -404,7 +404,7 @@ def apply_scf_checkpoint(mf, scf_config, run_dir=None):
 
 
 def _scf_retry_enabled():
-    value = getenv_with_legacy("PYSCF_AUTO_SCF_RETRY", "DFTFLOW_SCF_RETRY", "1")
+    value = getenv_str("PYSCF_AUTO_SCF_RETRY", "1")
     value = value.strip().lower()
     return value not in ("0", "false", "no", "off")
 

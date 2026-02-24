@@ -1,0 +1,26 @@
+runtime:
+  allowed_root: "~/pyscf_runs"
+  organized_root: "~/pyscf_outputs"
+  default_max_retries: 5
+
+monitoring:
+  enabled: false
+  telegram:
+    bot_token_env: "PYSCF_AUTO_TELEGRAM_BOT_TOKEN"
+    chat_id_env: "PYSCF_AUTO_TELEGRAM_CHAT_ID"
+    timeout: 5.0
+    max_retries: 2
+    base_delay: 1.0
+    jitter: 0.3
+  delivery:
+    queue_size: 1000
+    flush_timeout: 3.0
+    dedup_ttl_hours: 24
+  heartbeat:
+    enabled: true
+    interval_minutes: 30
+
+cleanup:
+  keep_extensions: [".inp", ".out", ".xyz", ".gbw", ".hess"]
+  keep_filenames: ["run_state.json", "run_report.json", "run_report.md"]
+  remove_patterns: ["*.retry*.inp", "*.retry*.out", "*_trj.xyz", "*.densities", "*.engrad", "*.tmp", "*.prop", "*.scfp", "*.opt"]

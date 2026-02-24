@@ -3,7 +3,7 @@ import os
 import time
 from datetime import datetime
 
-from env_compat import getenv_with_legacy
+from env_compat import env_truthy
 from run_queue import record_status_event, register_foreground_run, update_queue_status
 from run_opt_config import (
     DEFAULT_QUEUE_LOCK_PATH,
@@ -543,12 +543,7 @@ def _run_non_optimization_mode(
         optimizer_mode=optimizer_mode,
         multiplicity=multiplicity,
     )
-    skip_capability_check = bool(
-        getenv_with_legacy(
-            "PYSCF_AUTO_SKIP_CAPABILITY_CHECK",
-            "DFTFLOW_SKIP_CAPABILITY_CHECK",
-        )
-    )
+    skip_capability_check = env_truthy("PYSCF_AUTO_SKIP_CAPABILITY_CHECK")
     if skip_capability_check:
         logging.warning("Skipping capability check (PYSCF_AUTO_SKIP_CAPABILITY_CHECK=1).")
     else:

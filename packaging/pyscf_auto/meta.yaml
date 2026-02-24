@@ -36,7 +36,6 @@ test:
   imports:
     - basis_set_exchange
     - sella
-    - run_opt
     - pyscf
     - pyscf.solvent.smd
   commands:

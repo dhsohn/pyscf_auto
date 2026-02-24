@@ -1,11 +1,11 @@
 import os
 from pathlib import Path
 
-from env_compat import getenv_with_legacy
+from env_compat import getenv_str
 
 
 def get_app_base_dir() -> str:
-    override = getenv_with_legacy("PYSCF_AUTO_BASE_DIR", "DFTFLOW_BASE_DIR")
+    override = getenv_str("PYSCF_AUTO_BASE_DIR")
     if override:
         return override
     if os.environ.get("PYTEST_CURRENT_TEST"):
