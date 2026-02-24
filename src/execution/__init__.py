@@ -34,11 +34,7 @@ from run_opt_resources import (
 from .context import build_molecule_context, prepare_run_context
 from .engine_adapter import WorkflowEngineAdapter
 from .events import enqueue_background_run
-from .stage_freq import run_frequency_stage
-from .stage_irc import run_irc_stage
-from .stage_opt import run_optimization_stage
-from .stage_scan import run_scan_stage
-from .stage_sp import run_single_point_stage
+from .plugins import FeatureUnavailableError, run_stage
 from .types import RunContext
 from .utils import (
     _disable_smd_solvent_settings,
@@ -747,14 +743,16 @@ def _run_non_optimization_mode(
         "irc_config": context.get("irc_config"),
     }
     if calculation_mode == "single_point":
-        run_single_point_stage(
+        run_stage(
+            "single_point",
             stage_context,
             update_foreground_queue,
             engine_adapter=engine_adapter,
         )
         return
     if calculation_mode == "frequency":
-        run_frequency_stage(
+        run_stage(
+            "frequency",
             stage_context,
             update_foreground_queue,
             engine_adapter=engine_adapter,
@@ -809,7 +807,8 @@ def _run_non_optimization_mode(
             "irc_force_threshold": irc_force_threshold,
         }
     )
-    run_irc_stage(
+    run_stage(
+        "irc",
         stage_context,
         update_foreground_queue,
         engine_adapter=engine_adapter,
@@ -864,7 +863,8 @@ def _dispatch_stage_for_mode(
     effective_threads = runtime_state["effective_threads"]
 
     if calculation_mode == "scan":
-        run_scan_stage(
+        run_stage(
+            "scan",
             args,
             context,
             molecule_context,
@@ -906,7 +906,8 @@ def _dispatch_stage_for_mode(
         )
         return
 
-    run_optimization_stage(
+    run_stage(
+        "optimization",
         args,
         context,
         molecule_context,
@@ -934,6 +935,11 @@ def _run_foreground(args, config: RunConfig, context, config_source_path, run_in
         try:
             runtime_state = _prepare_runtime_state_for_run(args, config, context)
             _dispatch_stage_for_mode(args, context, runtime_state, update_foreground_queue)
+        except FeatureUnavailableError as exc:
+            logging.error("%s", exc)
+            if queue_tracking:
+                update_foreground_queue("failed", exit_code=1)
+            raise
         except Exception:
             logging.exception("Run failed.")
             if queue_tracking:

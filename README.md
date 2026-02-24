@@ -19,6 +19,29 @@ conda create -n pyscf_auto -c daehyupsohn -c conda-forge pyscf_auto
 conda activate pyscf_auto
 ```
 
+### Dependency Profiles
+
+- `core` (default): CLI + state/organize/cleanup paths
+- `engine`: adds PySCF/ASE runtime dependencies for `run-inp`
+- `dispersion`: optional D3/D4 backends
+- `full`: `engine + dispersion`
+
+Example (pip editable/dev environment):
+
+```bash
+pip install -e ".[engine]"
+pip install -e ".[full]"
+```
+
+### Optional Feature Flags
+
+Heavy workflow stages can be disabled explicitly:
+
+- `PYSCF_AUTO_DISABLE_SCAN=1`
+- `PYSCF_AUTO_DISABLE_IRC=1`
+- `PYSCF_AUTO_DISABLE_FREQUENCY=1`
+- `PYSCF_AUTO_DISABLE_QCSCHEMA=1`
+
 ### 2) Run
 
 ```bash
@@ -77,3 +100,9 @@ mypy src
 ## Scope
 
 pyscf_auto is a local workstation tool. It does not provide distributed scheduling/orchestration.
+
+## Architecture Guardrails
+
+- Runner/execution boundary is fixed at `execution.entrypoint.execute_attempt`.
+- Stage implementations are lazy-loaded via `execution.plugins`.
+- Guardrail tests enforce this boundary and block direct stage imports from `execution/__init__.py`.

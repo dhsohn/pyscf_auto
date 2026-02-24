@@ -9,8 +9,8 @@ import traceback
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from execution.entrypoint import execute_attempt
 from inp.parser import InpConfig, inp_config_to_dict, inp_config_to_xyz_content
-from run_opt_config import build_run_config
 from .retry_strategies import apply_retry_strategy
 from .state_machine import (
     decide_attempt_outcome,
@@ -258,18 +258,14 @@ def _run_single_attempt(
     }
 
     try:
-        # Build RunConfig from the config dictionary
-        run_config = build_run_config(config_dict)
-
-        # Create an args-like namespace for the execution engine entrypoint.
-        args = _build_engine_args(xyz_path, attempt_dir)
-
-        # Import and run the execution engine.
-        import execution
-
-        config_raw = json.dumps(config_dict, indent=2)
-        execution.run(args, run_config, config_raw, None, False)
-        metadata = _load_attempt_metadata(attempt_dir)
+        execution_result = execute_attempt(
+            config_dict=config_dict,
+            xyz_path=xyz_path,
+            run_dir=attempt_dir,
+        )
+        metadata = execution_result.metadata
+        if metadata is None:
+            metadata = _load_attempt_metadata(attempt_dir)
         status_hint, reason_hint = _classify_from_metadata(metadata)
         if status_hint and status_hint != "completed":
             attempt["analyzer_status"] = status_hint
@@ -298,31 +294,6 @@ def _run_single_attempt(
 
     attempt["ended_at"] = datetime.now(timezone.utc).isoformat()
     return attempt
-
-
-def _build_engine_args(xyz_path: str, run_dir: str):
-    """Build an argparse-compatible namespace for the execution engine."""
-    from types import SimpleNamespace
-
-    return SimpleNamespace(
-        xyz_file=xyz_path,
-        config=None,
-        solvent_map="solvent_dielectric.json",
-        run_dir=run_dir,
-        run_id=None,
-        resume=None,
-        profile=False,
-        queue_priority=0,
-        queue_max_runtime=None,
-        no_background=True,
-        background=False,
-        force_resume=False,
-        scan_dimension=None,
-        scan_grid=None,
-        scan_mode=None,
-        scan_result_csv=None,
-        queue_runner=False,
-    )
 
 
 def _classify_error(error_msg: str) -> str:

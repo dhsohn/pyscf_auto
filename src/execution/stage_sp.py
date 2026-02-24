@@ -1,9 +1,9 @@
 import logging
 import time
 
-from qcschema_export import export_qcschema_result
 from .engine_adapter import WorkflowEngineAdapter
 from .events import finalize_metadata
+from .plugins import export_qcschema_result
 from .utils import _resolve_d3_params, _update_checkpoint_scf
 
 

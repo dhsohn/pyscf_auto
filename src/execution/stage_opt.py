@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import Any, cast
 
 from env_compat import env_truthy
-from qcschema_export import export_qcschema_result
 from run_opt_logging import ensure_stream_newlines
 from run_opt_metadata import (
     build_run_summary,
@@ -26,6 +25,7 @@ from run_opt_resources import collect_environment_snapshot, ensure_parent_dir, r
 from run_opt_utils import is_ts_quality_enforced as _is_ts_quality_enforced
 from .engine_adapter import WorkflowEngineAdapter
 from .metadata_recorder import RunMetadataRecorder
+from .plugins import export_qcschema_result
 from .types import MoleculeContext, OptimizationStageContext, RunContext
 from .utils import (
     _atoms_to_atom_spec,

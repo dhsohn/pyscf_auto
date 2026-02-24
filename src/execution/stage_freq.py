@@ -3,11 +3,10 @@ import logging
 import time
 import traceback
 
-from qcschema_export import export_qcschema_result
 from run_opt_utils import is_ts_quality_enforced as _is_ts_quality_enforced
 from .engine_adapter import WorkflowEngineAdapter
 from .events import finalize_metadata
-from .stage_irc import run_irc_stage
+from .plugins import export_qcschema_result, run_stage
 from .utils import (
     _frequency_units,
     _frequency_versions,
@@ -18,6 +17,10 @@ from .utils import (
 
 
 DEFAULT_ENGINE_ADAPTER = WorkflowEngineAdapter()
+
+
+def run_irc_stage(*args, **kwargs):
+    return run_stage("irc", *args, **kwargs)
 
 
 def _compute_frequency_result(stage_context, profiling_enabled, engine_adapter):
