@@ -29,7 +29,7 @@ requirements:
     - h5py
     - libcint
     - libxc
-    - libxcfun  # [not arm64]
+    - xcfun  # [not arm64]
     - openblas
   run:
     - python
@@ -38,7 +38,7 @@ requirements:
     - h5py
     - libcint
     - libxc
-    - libxcfun  # [not arm64]
+    - xcfun  # [not arm64]
     - openblas
 
 test:
